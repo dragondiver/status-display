@@ -1,0 +1,47 @@
+#!/bin/sh
+# Schuetzt main lokal, solange serverseitiger Branch-Schutz nicht verfuegbar ist
+# (Rulesets brauchen GitHub Pro oder ein oeffentliches Repo).
+#
+# Aktivieren nach dem Klonen:  git config core.hooksPath .githooks
+# Notausstieg im Einzelfall:   PRE_PUSH_SKIP=1 git push ...
+
+if [ "${PRE_PUSH_SKIP:-0}" = "1" ]; then
+	echo "pre-push: uebersprungen (PRE_PUSH_SKIP=1)." >&2
+	exit 0
+fi
+
+status=0
+zero=$(git hash-object --stdin </dev/null | tr '[:alnum:]' '0')
+
+# stdin: <local ref> <local sha> <remote ref> <remote sha>
+while read -r local_ref local_sha remote_ref remote_sha; do
+	[ -z "$remote_ref" ] && continue
+
+	if [ "$remote_ref" = "refs/heads/main" ]; then
+		echo "pre-push: direkter Push auf main - abgebrochen." >&2
+		echo "          Aenderungen gehen ueber einen Branch und einen PR." >&2
+		status=1
+		continue
+	fi
+
+	# Geloeschte Refs haben nichts zu scannen.
+	[ "$local_sha" = "$zero" ] && continue
+
+	if [ "$remote_sha" = "$zero" ]; then
+		range="$local_sha --not --remotes=origin"
+	else
+		range="$remote_sha..$local_sha"
+	fi
+
+	if command -v gitleaks >/dev/null 2>&1; then
+		# shellcheck disable=SC2086
+		if ! gitleaks git --redact --no-banner --log-opts "$range" .; then
+			echo "pre-push: Secrets in den zu pushenden Commits gefunden - abgebrochen." >&2
+			status=1
+		fi
+	else
+		echo "pre-push: gitleaks nicht gefunden - Secret-Scan uebersprungen." >&2
+	fi
+done
+
+exit $status

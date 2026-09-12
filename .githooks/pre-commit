@@ -1,0 +1,16 @@
+#!/bin/sh
+# Blockiert Commits, die Secrets enthalten.
+# Aktivieren nach dem Klonen:  git config core.hooksPath .githooks
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+	echo "pre-commit: gitleaks nicht gefunden - Secret-Scan uebersprungen." >&2
+	echo "            Installieren mit: brew install gitleaks" >&2
+	exit 0
+fi
+
+if ! gitleaks git --staged --redact --no-banner; then
+	echo >&2
+	echo "pre-commit: Secrets in den gestageten Aenderungen gefunden - Commit abgebrochen." >&2
+	echo "            Falsch-Positive mit '# gitleaks:allow' markieren oder in .gitleaksignore eintragen." >&2
+	exit 1
+fi
