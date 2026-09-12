@@ -1,0 +1,29 @@
+#pragma once
+
+// Kopiere diese Datei nach src/config.h und trage deine Werte ein.
+// src/config.h steht in .gitignore und wird nicht committet.
+
+// ---------- WLAN ----------
+#define WIFI_SSID       "DEIN_WLAN"
+#define WIFI_PASSWORD   "DEIN_PASSWORT"
+
+// ---------- Status-Endpoint ----------
+// Erwartete Antwort (application/json):
+//   {"status": "deep_focus"}
+// Alternativ reiner Text im Body: deep_focus
+// Erlaubte Werte: available | deep_focus | in_a_call | away  (siehe main.cpp)
+#define STATUS_URL      "http://192.168.1.10:8080/status"
+
+// Optionaler Bearer-Token; leer lassen, wenn der Endpoint offen ist.
+#define STATUS_TOKEN    ""
+
+// ---------- Timing (Millisekunden) ----------
+#define POLL_INTERVAL_MS        30000UL   // wie oft der Endpoint gepollt wird
+#define MANUAL_TIMEOUT_MS       1800000UL // 30 min manuell, dann zurueck auf Automatik
+#define HTTP_TIMEOUT_MS         5000UL
+
+// ---------- Hardware ----------
+#define BUTTON_PIN      0     // Taster gegen GND (INPUT_PULLUP). GPIO0 = BOOT-Taster
+#define I2C_SDA         21
+#define I2C_SCL         22
+#define OLED_ADDRESS    0x3C  // manche Module: 0x3D
