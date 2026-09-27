@@ -50,9 +50,25 @@ extension CLI {
                           since: now.addingTimeInterval(-3 * 3600), lastSeen: now.addingTimeInterval(-65 * 60),
                           isStale: true),
         ]
+        let rows = [
+            PRRow(repoKey: "github.com/florianhuber/telefon-ai", repository: "telefon-ai",
+                  toReview: 2, mine: 1, ciFailing: true),
+            PRRow(repoKey: "github.com/florianhuber/rundfunk", repository: "rundfunk",
+                  toReview: 1, mine: 0, ciFailing: false),
+            PRRow(repoKey: "github.com/florianhuber/heim-agent", repository: "heim-agent",
+                  toReview: 0, mine: 0, ciFailing: false),
+            PRRow(repoKey: "github.com/florianhuber/mise-en-place", repository: "mise-en-place",
+                  toReview: 0, mine: 2, ciFailing: false),
+            PRRow(repoKey: "github.com/florianhuber/sprachkurs", repository: "sprachkurs",
+                  toReview: 0, mine: 1, ciFailing: false),
+            PRRow(repoKey: "github.com/florianhuber/status-display", repository: "status-display",
+                  toReview: 0, mine: 1, ciFailing: false),
+            PRRow(repoKey: "github.com/florianhuber/claude-konventionen", repository: "claude-konventionen",
+                  toReview: 0, mine: 1, ciFailing: false),
+        ]
         let state = BoardState(statusName: "Deep Focus", statusColor: RGBColor(hex: "#B3263E")!,
                                statusSince: now.addingTimeInterval(-47 * 60), agents: agents,
-                               prs: PRZone(toReview: 3, mine: 2, ciFailing: 1, lastSuccess: now, isStale: false),
+                               prs: PRZone(rows: rows, ciFailingCount: 1, lastSuccess: now, isStale: false),
                                now: now)
         do {
             try PanelImage.png(BoardRenderer.render(state)).write(to: URL(fileURLWithPath: path))

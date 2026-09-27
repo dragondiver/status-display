@@ -14,6 +14,16 @@ func pixel(_ image: CGImage, _ x: Int, _ y: Int) -> (r: UInt8, g: UInt8, b: UInt
 
 func isRed(_ p: (r: UInt8, g: UInt8, b: UInt8)) -> Bool { p.r > 200 && p.g < 60 && p.b < 60 }
 func isBlue(_ p: (r: UInt8, g: UInt8, b: UInt8)) -> Bool { p.b > 200 && p.r < 60 && p.g < 60 }
+func isWhitish(_ p: (r: UInt8, g: UInt8, b: UInt8)) -> Bool { p.r > 240 && p.g > 240 && p.b > 240 }
+/// Gedeckte Textfarbe (`muted`/`grey`, z.B. veraltete Tabelle): heller als der Hintergrund
+/// (#121216), aber deutlich unter Weiß, ohne Farbstich.
+func isGreyish(_ p: (r: UInt8, g: UInt8, b: UInt8)) -> Bool {
+    p.r > 60 && p.r < 200 && abs(Int(p.r) - Int(p.g)) < 20 && abs(Int(p.g) - Int(p.b)) < 20
+}
+/// Trennlinienfarbe `#2A2A30`.
+func isSeparator(_ p: (r: UInt8, g: UInt8, b: UInt8)) -> Bool {
+    p.r > 30 && p.r < 60 && p.g > 30 && p.g < 60 && p.b > 30 && p.b < 65
+}
 
 final class FakeWriter: HIDReportWriter {
     var reports: [[UInt8]] = []

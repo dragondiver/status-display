@@ -26,10 +26,17 @@ public enum BoardText {
         s.count <= max ? s : String(s.prefix(max - 1)) + "…"
     }
 
-    /// Höchstens `maxRows` Zeilen; bei Überlauf eine Zeile weniger plus „+N weitere“.
+    /// Höchstens `maxRows` Zeilen; bei Überlauf eine Zeile weniger plus „+N weitere”.
     public static func visibleAgents(_ agents: [AgentActivity], maxRows: Int = 4) -> (rows: [AgentActivity], more: Int) {
         guard agents.count > maxRows else { return (agents, 0) }
         return (Array(agents.prefix(maxRows - 1)), agents.count - (maxRows - 1))
+    }
+
+    /// Höchstens `maxRows` Zeilen der PR-Tabelle; bei Überlauf eine Zeile weniger plus
+    /// „+N weitere” (gleiches Prinzip wie `visibleAgents`).
+    public static func visiblePRRows(_ rows: [PRRow], maxRows: Int = 5) -> (rows: [PRRow], more: Int) {
+        guard rows.count > maxRows else { return (rows, 0) }
+        return (Array(rows.prefix(maxRows - 1)), rows.count - (maxRows - 1))
     }
 
     /// Grobe Breitenschätzung für fette Großbuchstaben (0,68 × Schriftgröße je Zeichen).
