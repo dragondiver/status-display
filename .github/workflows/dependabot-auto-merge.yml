@@ -1,0 +1,29 @@
+name: Dependabot Auto-Merge
+
+# Schaltet bei Dependabot-PRs Auto-Merge ein: GitHub merged sie selbst, sobald
+# die im Ruleset geforderten Checks gruen sind. Rote PRs bleiben liegen.
+# Major-Updates sind ausgenommen — die will man vor dem Merge gelesen haben.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dependabot-Metadaten lesen
+        id: meta
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Auto-Merge aktivieren (nur Patch und Minor)
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
