@@ -19,7 +19,11 @@ public struct AppSupport {
     public var endpointURL: URL { directory.appendingPathComponent("endpoint.json") }
 
     public func loadOrCreateToken() throws -> String {
-        if let t = readToken() { return t }
+        if let t = readToken() {
+            try ensureDirectory()
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tokenURL.path)
+            return t
+        }
         return try regenerateToken()
     }
 
@@ -30,9 +34,21 @@ public struct AppSupport {
             throw CocoaError(.fileWriteUnknown)
         }
         let token = bytes.map { String(format: "%02x", $0) }.joined()
-        try Data(token.utf8).write(to: tokenURL, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tokenURL.path)
+        try writeSecurely(Data(token.utf8), to: tokenURL)
         return token
+    }
+
+    /// Schreibt über eine temporäre Datei mit 0600 von Anfang an (kein Fenster mit weiteren Rechten)
+    /// und ersetzt die Zieldatei atomar.
+    private func writeSecurely(_ data: Data, to url: URL) throws {
+        let tempURL = url.deletingLastPathComponent()
+            .appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
+        guard FileManager.default.createFile(atPath: tempURL.path, contents: data,
+                                              attributes: [.posixPermissions: 0o600]) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     public func readToken() -> String? {

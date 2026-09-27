@@ -49,6 +49,15 @@ final class IngressRouterTests: XCTestCase {
         XCTAssertEqual(statuses.count, 1)
     }
 
+    func testInvalidMinutesAreRejected() {
+        for minutes in ["-5", "0", "1e308"] {
+            let r = router().handle(req("POST", "/v1/status", body: #"{"preset":"deep-focus","minutes":\#(minutes)}"#))
+            XCTAssertEqual(r.status, 400, "minutes=\(minutes)")
+            XCTAssertTrue(String(decoding: r.body, as: UTF8.self).contains("ungültige Dauer"), "minutes=\(minutes)")
+        }
+        XCTAssertTrue(statuses.isEmpty)
+    }
+
     func testMCPIsForwardedOnlyWithToken() {
         let r = router(mcp: { _ in HTTPResponse(status: 299) })
         XCTAssertEqual(r.handle(req("POST", "/mcp", body: "{}")).status, 299)

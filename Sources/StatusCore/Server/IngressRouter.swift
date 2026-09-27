@@ -38,6 +38,11 @@ public final class IngressRouter {
             guard knownPresets.value.contains(body.preset) else {
                 return .json(400, ["error": "unbekannter Status: \(body.preset)"])
             }
+            if let minutes = body.minutes {
+                guard minutes.isFinite, minutes > 0, minutes <= 1440 else {
+                    return .json(400, ["error": "ungültige Dauer"])
+                }
+            }
             onStatus(body.preset, body.minutes.map { $0 * 60 })
             return .json(202, ["ok": true])
         case (_, "/mcp"):
