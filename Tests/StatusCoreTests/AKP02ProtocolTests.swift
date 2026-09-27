@@ -13,18 +13,21 @@ final class AKP02ProtocolTests: XCTestCase {
 
     func testScreenOnLayout() {
         let r = AKP02Protocol.screenOn()
-        XCTAssertEqual(Array(r[0..<10]), ascii("CRT") + [0, 0] + ascii("DIS") + [0, 0])
+        let expected: [UInt8] = ascii("CRT") + [0, 0] + ascii("DIS") + [0, 0]
+        XCTAssertEqual(Array(r[0..<10]), expected)
         XCTAssertTrue(r[10...].allSatisfy { $0 == 0 })
     }
 
     func testHeartbeatLayout() {
         let r = AKP02Protocol.heartbeat()
-        XCTAssertEqual(Array(r[0..<14]), ascii("CRT") + [0, 0] + ascii("CONNECT") + [0, 0])
+        let expected: [UInt8] = ascii("CRT") + [0, 0] + ascii("CONNECT") + [0, 0]
+        XCTAssertEqual(Array(r[0..<14]), expected)
     }
 
     func testBrightnessParamAndClamp() {
-        XCTAssertEqual(Array(AKP02Protocol.brightness(60)[0..<11]),
-                       ascii("CRT") + [0, 0] + ascii("LIG") + [0, 0] + [60])
+        // Explizit typisiert: ältere Compiler (Xcode 16 in CI) scheitern sonst an der Typinferenz.
+        let expected: [UInt8] = ascii("CRT") + [0, 0] + ascii("LIG") + [0, 0] + [60]
+        XCTAssertEqual(Array(AKP02Protocol.brightness(60)[0..<11]), expected)
         XCTAssertEqual(AKP02Protocol.brightness(150)[10], 100)
         XCTAssertEqual(AKP02Protocol.brightness(-5)[10], 0)
     }
