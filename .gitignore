@@ -1,2 +1,6 @@
 .pio/
 .vscode/
+.build/
+build/
+.swiftpm/
+.DS_Store
