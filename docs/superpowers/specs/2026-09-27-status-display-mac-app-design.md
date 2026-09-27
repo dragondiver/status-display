@@ -1,0 +1,278 @@
+# status-display: Mac-App für das AJAZZ AKP02 — Design
+
+Stand: 27.09.2026 · Status: Entwurf zur Freigabe
+
+## Ziel
+
+Eine kleine native Mac-App in der Menüleiste, die auf dem AJAZZ AKP02
+(9,2″, 1920×462, USB-HID) ein Developer-Status-Board zeigt: den selbst
+gesetzten Arbeitsstatus, laufende Agenten und PRs. Sie läuft auf Florians
+privatem Mac **und** auf dem Arbeitgeber-Mac, jeweils mit eigener
+Konfiguration.
+
+Erfolg heißt: Ein Blick auf das Display sagt, (1) ob gestört werden darf,
+(2) welcher Agent gerade auf Florian wartet, (3) ob Reviews anstehen oder ein
+eigener PR rot ist. Ruhig, solange nichts zu tun ist.
+
+## Rahmenbedingungen
+
+| Punkt | Festlegung | Quelle |
+|---|---|---|
+| Plattform | macOS 14+, native Swift/SwiftUI, eine `.app` ohne Laufzeit | Entscheidung 27.09. (Weg A) |
+| Zwei Macs | privat (github.com) und Arbeitgeber (GHE); keine Synchronisation, keine privaten Daten auf dem Firmen-Mac | Florian |
+| Installation | Eigenbau, unsigniert bzw. ad-hoc signiert; einmal Rechtsklick → Öffnen | Florian: „Ich installiere dort den Eigenbau" |
+| Agenten | Claude Code, Codex, GitHub Copilot, Devin u. a. | Florian |
+| Display optional | Ohne angestecktes AKP02 läuft die App nur in der Menüleiste | Annahme, bestätigt |
+
+## Spike-Ergebnis (27.09.2026)
+
+Mit der Python-Library [deonspengler/akp02](https://github.com/deonspengler/akp02)
+(v2.0.0, MPL-2.0) auf diesem Mac geprüft:
+
+- macOS sieht das Gerät ohne Treiber: `0300:3017`, „HOTSPOTEKUSB HID DEMO",
+  Usage Page `0xFFA0`, zwei Usages.
+- Öffnen 0,02 s, Vollbild 0,10 s, Teilbild 0,013 s. Vollständiges Neuzeichnen
+  bei jeder Änderung ist also unproblematisch.
+- Das Panel schläft ohne Heartbeat ein und zeigt dann das AJAZZ-Logo
+  (Library: alle 5 s). Nach Reconnect setzt es die Helligkeit auf 80 zurück.
+- Teilbilder müssen auf der kurzen Achse an bestimmten Positionen beginnen,
+  sonst stimmen die Farben nicht (`SHORT_AXIS_ALIGN_*` in der Library).
+- Helvetica hat kein `◐`; Symbole werden gezeichnet, nicht als Glyphen gesetzt.
+
+## Anzeige (Version 1)
+
+```
+┌──────────────┬───────────────────────┬──────────────────┬──────────────┐
+│  DEEP FOCUS  │  AGENTEN              │  PRs             │  14:32       │
+│  seit 47 min │  ● telefon-ai  läuft  │  3  zu reviewen  │              │
+│              │  ◐ rundfunk    wartet │  2  eigene offen │              │
+│              │    auf dich (4 min)   │     1 CI rot     │              │
+│              │  ✓ heim-agent  fertig │                  │              │
+└──────────────┴───────────────────────┴──────────────────┴──────────────┘
+   480 px            ~700 px                ~460 px           ~280 px
+```
+
+- **Status**: groß, Farbe je Status, darunter „seit …". Die einzige Zone, die
+  für Kolleg:innen gedacht ist.
+- **Agenten**: höchstens 4 Zeilen, sortiert *wartet* → *Fehler* → *läuft* →
+  *fertig*. „Wartet auf dich" ist das stärkste Signal der ganzen Anzeige
+  (Akzentfarbe, Dauer). Mehr als 4: letzte Zeile „+2 weitere".
+- **PRs**: nur Zahlen. Roter Rand der Zone, wenn ein eigener PR rote CI hat.
+- **Uhr**: Stunden:Minuten. Platz für „nächster Termin" in Version 2.
+- **Veraltete Daten** werden nie still weiter angezeigt: Ist eine Quelle länger
+  als 3 Abfrageintervalle ohne Erfolg, wird ihre Zone grau und zeigt das Alter
+  („PRs · Stand 14:05").
+
+Die Menüleiste zeigt dieselben Informationen ausführlich und klickbar.
+
+## Architektur
+
+Ein Prozess, klar getrennte Einheiten. Alles außer `AKP02Driver` und der UI
+ist ohne Gerät und ohne Netz testbar.
+
+```
+                ┌────────────── Eingänge ──────────────┐
+ Claude-Hooks ─▶│ IngressServer  (127.0.0.1)            │
+ Codex notify ─▶│   POST /v1/events   ─┐                │
+ MCP-Agenten  ─▶│   /mcp (Streamable) ─┴▶ AgentRegistry │──┐
+                └──────────────────────────────────────┘  │
+ gh-Token ─▶ PRProvider (github.com, GHE) ─────────────────┤
+ Menüleiste ─▶ StatusStore ────────────────────────────────┤
+                                                            ▼
+                                                     BoardState
+                                                            │
+                                  ┌─────────────────────────┴──────┐
+                                  ▼                                ▼
+                          Renderer (CGImage)               MenuBar-UI
+                                  │
+                                  ▼
+                          AKP02Driver (IOKit HID)
+```
+
+### 1. `AKP02Driver`
+
+- Findet das Gerät über `IOHIDManager` (VID `0x0300`, PID `0x3017`), reagiert
+  auf An- und Abstecken sowie auf Aufwachen aus dem Ruhezustand.
+- API: `screenOn()`, `setBrightness(_:)`, `show(jpeg:at:)`, `heartbeat()`.
+- Heartbeat alle 5 s aus einem Timer. Bildübertragungen und Heartbeat laufen
+  seriell über eine Queue, damit kein Heartbeat mitten in ein Bild fällt.
+- Nach jedem (Re-)Connect: `screenOn`, Helligkeit aus der Konfiguration,
+  vollständiges Bild.
+- Protokoll portiert aus `akp02` (Framing, JPEG-Parameter, Ausrichtungsregel).
+  Die portierte Datei bleibt unter MPL-2.0 mit Quellenangabe; der Rest des
+  Projekts ist davon nicht betroffen (MPL ist dateibezogen).
+- Aufgeteilt in `AKP02Protocol` (reine Byte-Erzeugung, testbar) und
+  `AKP02Transport` (IOKit).
+
+### 2. `Renderer`
+
+Reine Funktion `BoardState → CGImage (1920×462)`, danach JPEG-Kodierung.
+Zeichnet mit Core Graphics/Core Text, Symbole als Formen. Die Zoneneinteilung
+ist Code, nicht Konfiguration (YAGNI). Bei jeder Änderung von `BoardState`
+wird neu gezeichnet, höchstens 2× pro Sekunde; die Uhr stößt einmal pro Minute
+ein Neuzeichnen an.
+
+### 3. `StatusStore`
+
+- Vorgaben (konfigurierbar, Reihenfolge = Menü): *Deep Focus* (rot),
+  *In Meeting* (violett), *Easy Coding* (grün), *Verfügbar* (grau),
+  *Pause* (blau). Name und Farbe je Eintrag.
+- Setzen per Menüleiste; optional mit Ablauf (30 min, 1 h, 2 h, bis
+  Tagesende), danach zurück auf *Verfügbar*.
+- Merkt sich Status und Startzeit über Neustarts hinweg (`UserDefaults`).
+- Der Status ist auch über den Ingress setzbar (`POST /v1/status`), damit ein
+  Kurzbefehl oder ein Skript ihn schalten kann. Agenten ändern ihn nicht.
+
+### 4. `AgentRegistry`
+
+Gemeinsames Modell für alle Eingänge:
+
+```swift
+struct AgentActivity {
+    let id: String          // Quelle + Session-ID
+    let source: String      // "claude-code", "codex", "mcp:<client>" …
+    var name: String        // Anzeigename, z. B. Projekt oder Agent
+    var project: String?
+    var state: State        // .running, .waiting, .done, .error
+    var since: Date         // Beginn des aktuellen Zustands
+    var detail: String?     // eine Zeile, z. B. "wartet auf Freigabe: Bash"
+    var url: URL?           // Link für die Menüleiste
+    var lastSeen: Date
+}
+```
+
+Regeln (Code, nicht Agent-Ermessen):
+
+- *fertig* verschwindet nach 10 min.
+- *läuft* ohne Meldung seit 30 min wird zu *unklar* (grau, „keine Meldung seit
+  …"). Nach 4 h ohne Meldung wird der Eintrag entfernt.
+- *wartet* bleibt stehen, bis eine neue Meldung kommt oder Florian ihn in der
+  Menüleiste wegklickt.
+- Nur im Speicher. Nach einem App-Neustart ist die Liste leer und füllt sich
+  mit den nächsten Meldungen.
+
+### 5. `IngressServer`
+
+Lokaler HTTP-Server, gebunden **nur an `127.0.0.1`**, Port konfigurierbar
+(Standard 47615).
+
+- `POST /v1/events` — ein Ereignis:
+  `{"source","session","state","name","project","detail","url"}`.
+- `POST /v1/status` — manuellen Status setzen.
+- `GET /v1/health` — für Skripte und Tests.
+- `/mcp` — MCP-Server (Streamable HTTP) mit einem Tool
+  `report_status(state, name, project?, detail?, url?)` und dem Hinweistext,
+  dass Agenten es bei Beginn, beim Warten auf den Menschen und am Ende
+  aufrufen sollen. Session-ID aus der MCP-Session.
+- **Schutz**: Jede Anfrage braucht den Header `Authorization: Bearer <token>`.
+  Das Token erzeugt die App beim ersten Start und legt es in
+  `~/Library/Application Support/status-display/token` ab (Rechte 0600).
+  Das verhindert, dass eine beliebige Webseite im Browser per `fetch` an
+  `localhost` Ereignisse einschleust.
+
+### 6. Agent-Anbindung (Version 1)
+
+**Claude Code** über Hooks in `~/.claude/settings.json`. Die App schreibt die
+Datei nicht selbst; sie zeigt im Einstellungsfenster den fertigen Block zum
+Kopieren und liefert ein kleines Skript `status-hook` (in der `.app`,
+Pfad wird angezeigt), das stdin-JSON der Hooks in ein Ereignis übersetzt:
+
+| Hook | Zustand |
+|---|---|
+| `SessionStart`, `UserPromptSubmit`, `PostToolUse` | läuft |
+| `Notification` (Freigabe, Leerlauf) | wartet |
+| `Stop` | fertig |
+| `SessionEnd` | Eintrag entfernen |
+
+`PostToolUse` hält *läuft* frisch und holt einen Eintrag nach einer Freigabe
+aus *wartet* zurück. Das Skript ist fehlertolerant: Läuft die App nicht,
+endet es still mit Exit 0 und verzögert Claude nie (Timeout 1 s).
+
+**Codex CLI** über `notify` in `~/.codex/config.toml`: meldet das Ende eines
+Turns → *wartet*. Ein *läuft* ist über `notify` allein nicht verfügbar; ob die
+aktuelle Codex-Version mehr Ereignisse liefert, klärt der Implementierungsplan
+am Stand von Codex. Bis dahin erscheint Codex nur, wenn er auf Florian wartet.
+
+**MCP** für alle lokalen Agenten mit MCP-Unterstützung (Copilot im
+Agent-Modus in VS Code u. a.): Eintrag `http://127.0.0.1:47615/mcp` mit
+Token-Header in der jeweiligen MCP-Konfiguration, dazu eine Zeile in den
+Agent-Anweisungen. Verlässlich ist das nur, soweit der Agent das Tool aufruft;
+deshalb gilt die 30-Minuten-Regel für *unklar* auch hier.
+
+### 7. `PRProvider`
+
+- Konfigurierte Hosts, je Mac eigene Liste: `github.com` und/oder der GHE-Host.
+- Token pro Host über `gh auth token --hostname <host>`. Die App speichert kein
+  eigenes Token. `gh` wird unter `/opt/homebrew/bin`, `/usr/local/bin` und
+  einem konfigurierbaren Pfad gesucht, weil Menüleisten-Apps kein Shell-`PATH`
+  haben.
+- Eine GraphQL-Abfrage pro Host alle 2 min (und sofort per Menüpunkt
+  „Aktualisieren"):
+  - `is:open is:pr review-requested:@me` → „zu reviewen"
+  - `is:open is:pr author:@me` mit `statusCheckRollup` → „eigene offen",
+    „CI rot"
+- GHE-API-Endpunkt: `https://<host>/api/graphql`.
+- Fehler (kein `gh`, nicht angemeldet, Netz) erscheinen als Klartext in der
+  Menüleiste; die Zone wird nach der Veraltungsregel grau.
+
+### 8. Menüleiste und Einstellungen
+
+- Symbol in der Menüleiste in der Farbe des aktuellen Status, mit Punkt, wenn
+  ein Agent wartet.
+- Menü: Status-Auswahl (mit Ablauf-Untermenü) · Agentenliste (Klick öffnet
+  `url`, Wegklicken für *wartet*) · PR-Listen je Host (Klick öffnet den PR) ·
+  Display-Zustand (verbunden / nicht gefunden) · Einstellungen · Beenden.
+- Einstellungen: Status-Vorgaben, Hosts, Helligkeit, Port, Token neu erzeugen,
+  Hook-Block zum Kopieren, Start bei Anmeldung (`SMAppService`).
+- Konfiguration liegt lokal pro Mac (`UserDefaults` bzw. Application Support);
+  nichts wird synchronisiert.
+
+## Fehlerbehandlung
+
+| Lage | Verhalten |
+|---|---|
+| Display nicht angesteckt | App läuft weiter, Menü zeigt „Display nicht gefunden", verbindet automatisch beim Anstecken |
+| Display nach Ruhezustand oder Reconnect | screenOn, Helligkeit, Vollbild |
+| App beendet | Panel fällt nach dem letzten Heartbeat auf das AJAZZ-Logo zurück — sichtbares Zeichen, dass die App nicht läuft |
+| `gh` fehlt oder nicht angemeldet | Hinweis in der Menüleiste, PR-Zone grau mit „?" |
+| Quelle liefert nicht mehr | Zone grau mit Zeitstempel des letzten Erfolgs |
+| Port belegt | Hinweis in der Menüleiste; Port in den Einstellungen änderbar |
+| Ungültiges Ereignis oder falsches Token | HTTP 400/401, nichts an der Anzeige ändert sich |
+
+## Tests
+
+- `AKP02Protocol`: Golden-Tests. Mit der Python-Library werden einmalig
+  Referenzpakete erzeugt (screenOn, Helligkeit, Heartbeat, Vollbild, Teilbild
+  mit Ausrichtung) und als Fixtures eingecheckt; die Swift-Implementierung
+  muss byte-gleich sein.
+- `AgentRegistry`: Zustandsübergänge und Zeitregeln mit injizierter Uhr.
+- `IngressServer`: Token-Prüfung, Ereignis-Parsing, MCP-Tool-Aufruf.
+- `PRProvider`: Parsing aufgezeichneter GraphQL-Antworten, Fehlerfälle.
+- `Renderer`: Snapshot-Tests (PNG-Vergleich) für typische Zustände,
+  einschließlich „veraltet" und „+2 weitere".
+- Gerät und Menüleiste: manuelle Checkliste.
+- CI: GitHub Actions auf macOS, ohne Secrets (Konvention aller Repos).
+
+## Bauen und Verteilen
+
+- Xcode-Projekt im Repo, Build per `xcodebuild` bzw. Skript `scripts/build.sh`,
+  Ergebnis `Status Display.app`, ad-hoc signiert.
+- Auf den Arbeitgeber-Mac per Kopie; erster Start per Rechtsklick → Öffnen.
+- Die bisherige ESP32-Firmware wandert nach `legacy-esp32/`.
+
+## Nicht in Version 1
+
+- Cloud-Agenten (Devin, Copilot Coding Agent, Codex Cloud) — Version 2, je
+  Anbieter eigene Zugangsdaten, am Arbeitgeber-Mac erst zu klären.
+- Kalender/nächster Termin — Version 2 (am Arbeitgeber-Mac vermutlich Outlook).
+- Teams-/Slack-Präsenz, Spotify, Systemwerte (CPU usw.).
+- Synchronisation zwischen den Macs.
+- Frei konfigurierbares Layout.
+
+## Offene Punkte für den Implementierungsplan
+
+1. Welche Ereignisse die aktuelle Codex-CLI außer `notify` anbietet.
+2. Welche Swift-Bibliothek den MCP-Server (Streamable HTTP) trägt, oder ob die
+   eine Tool-Schnittstelle direkt implementiert wird.
+3. Ob `IOHIDManager` das Gerät ohne Eingabeüberwachungs-Freigabe öffnen darf
+   (herstellerspezifische Usage Page, kein Tastatur-/Maus-Gerät — erwartet: ja).
