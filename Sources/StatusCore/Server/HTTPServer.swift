@@ -12,7 +12,13 @@ public final class HTTPServer {
         var closed = false
     }
 
-    public var onStateChange: ((State) -> Void)?
+    /// Wird vom MainActor gesetzt (auch auf `nil`) und auf der Server-Queue gelesen/aufgerufen;
+    /// `Locked` synchronisiert das, ohne die öffentliche API zu ändern.
+    public var onStateChange: ((State) -> Void)? {
+        get { onStateChangeBox.value }
+        set { onStateChangeBox.value = newValue }
+    }
+    private let onStateChangeBox = Locked<((State) -> Void)?>(nil)
     private let port: UInt16
     private let readTimeout: TimeInterval
     private let maxConnections: Int
