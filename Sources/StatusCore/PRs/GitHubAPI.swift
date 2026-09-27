@@ -13,7 +13,7 @@ public enum GitHubAPI {
       mine: search(query: "is:open is:pr archived:false author:@me", type: ISSUE, first: 50) { nodes { ...pr } }
     }
     fragment pr on PullRequest {
-      number title url repository { nameWithOwner }
+      number title url repository { nameWithOwner } isDraft
       commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
     }
     """
@@ -36,7 +36,8 @@ public enum GitHubAPI {
               let urlString = n.url, let url = URL(string: urlString) else { return nil }
         let state = n.commits?.nodes.last??.commit.statusCheckRollup?.state
         return PullRequest(number: number, title: title, repository: n.repository?.nameWithOwner ?? "",
-                           url: url, ciFailing: state == "FAILURE" || state == "ERROR")
+                           url: url, ciFailing: state == "FAILURE" || state == "ERROR",
+                           isDraft: n.isDraft ?? false)
     }
 
     private struct Response: Decodable { let data: DataField?; let errors: [GQLError]? }
@@ -45,7 +46,7 @@ public enum GitHubAPI {
     private struct Search: Decodable { let nodes: [Node?] }
     private struct Node: Decodable {
         let number: Int?; let title: String?; let url: String?
-        let repository: Repo?; let commits: Commits?
+        let repository: Repo?; let commits: Commits?; let isDraft: Bool?
     }
     private struct Repo: Decodable { let nameWithOwner: String }
     private struct Commits: Decodable { let nodes: [CommitNode?] }
