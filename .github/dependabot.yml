@@ -1,0 +1,16 @@
+version: 2
+
+# Nur GitHub Actions: die App hat keine Swift-Paket-Abhängigkeiten.
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(ci)"
