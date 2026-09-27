@@ -120,6 +120,9 @@ ein Neuzeichnen an.
 - Setzen per Menüleiste; optional mit Ablauf (30 min, 1 h, 2 h, bis
   Tagesende), danach zurück auf *Verfügbar*.
 - Merkt sich Status und Startzeit über Neustarts hinweg (`UserDefaults`).
+- Neben dem manuellen Status gibt es einen automatischen Status mit Quelle,
+  der Vorrang hat, solange er gesetzt ist. In Version 1 ungenutzt; er ist die
+  Andockstelle für Teams (siehe Version 2).
 - Der Status ist auch über den Ingress setzbar (`POST /v1/status`), damit ein
   Kurzbefehl oder ein Skript ihn schalten kann. Agenten ändern ihn nicht.
 
@@ -260,12 +263,49 @@ deshalb gilt die 30-Minuten-Regel für *unklar* auch hier.
 - Auf den Arbeitgeber-Mac per Kopie; erster Start per Rechtsklick → Öffnen.
 - Die bisherige ESP32-Firmware wandert nach `legacy-esp32/`.
 
+## Version 2: Microsoft Teams in beide Richtungen
+
+Gewünscht (Florian, 27.09.2026): Teams und App gleichen den Status in beide
+Richtungen ab. Nicht in Version 1, weil beide Wege am Arbeitgeber-Mac erst
+geprüft werden müssen. Version 1 bereitet es nur im `StatusStore` vor.
+
+**Teams → App** („in einem Call" → *In Meeting*)
+
+- Weg 1, bevorzugt: die lokale Drittanbieter-API des neuen Teams-Clients
+  (Datenschutz → „API von Drittanbietern verwalten"). Liefert
+  Besprechungszustand, Stummschaltung und Kamera, ohne App-Registrierung im
+  Tenant; Teams fragt einmal selbst nach. Vorab zu prüfen: ob die Einstellung
+  am Arbeitgeber-Mac freigegeben ist und welche Zustände die API heute liefert.
+- Weg 2: Graph `/me/presence` (`Presence.Read`) — liefert auch *Beschäftigt*
+  und *Nicht stören*, braucht aber eine App-Registrierung im Firmen-Tenant.
+
+**App → Teams** (*Deep Focus* → *Nicht stören*)
+
+- Nur über Graph `setUserPreferredPresence` (`Presence.ReadWrite`),
+  Device-Code-Anmeldung, Token im Schlüsselbund. Setzt eine App-Registrierung
+  mit Zustimmung der IT voraus.
+- Zuordnung konfigurierbar, Vorschlag: *Deep Focus* → Nicht stören,
+  *In Meeting* → Beschäftigt, *Pause* → Abwesend, sonst → Verfügbar.
+
+**Kein Pingpong**: Setzt die App den Teams-Status, ignoriert sie das daraus
+folgende Teams-Ereignis. Ein automatisch gesetzter Status wird nie nach Teams
+zurückgeschrieben, wenn er aus Teams kam.
+
+**Vorbereitung in Version 1**: Der `StatusStore` kennt neben dem manuellen
+Status einen *automatischen* Status mit Quelle (zunächst ungenutzt). Ist er
+gesetzt, hat er Vorrang; endet er, gilt wieder der manuelle Status. So braucht
+Version 2 keinen Umbau.
+
+**Vor dem Bau zu klären (Florian, Arbeitgeber)**: Drittanbieter-API in Teams
+freigegeben? Graph-App-Registrierung mit `Presence.ReadWrite` möglich?
+
 ## Nicht in Version 1
 
+- Microsoft Teams (siehe Version 2 oben).
 - Cloud-Agenten (Devin, Copilot Coding Agent, Codex Cloud) — Version 2, je
   Anbieter eigene Zugangsdaten, am Arbeitgeber-Mac erst zu klären.
 - Kalender/nächster Termin — Version 2 (am Arbeitgeber-Mac vermutlich Outlook).
-- Teams-/Slack-Präsenz, Spotify, Systemwerte (CPU usw.).
+- Slack-Präsenz, Spotify, Systemwerte (CPU usw.).
 - Synchronisation zwischen den Macs.
 - Frei konfigurierbares Layout.
 
