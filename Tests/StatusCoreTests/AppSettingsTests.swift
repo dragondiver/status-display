@@ -11,4 +11,11 @@ final class AppSettingsTests: XCTestCase {
         s.save(to: d)
         XCTAssertEqual(AppSettings.load(from: d), s)
     }
+
+    func testNormalizedHost() {
+        XCTAssertEqual(AppSettings.normalizedHost("ghe.firma.de"), "ghe.firma.de")
+        XCTAssertEqual(AppSettings.normalizedHost(" https://GHE.firma.de/ "), "ghe.firma.de")
+        XCTAssertNil(AppSettings.normalizedHost("ghe firma.de"))
+        XCTAssertNil(AppSettings.normalizedHost(""))
+    }
 }

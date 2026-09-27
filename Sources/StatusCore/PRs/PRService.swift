@@ -10,6 +10,11 @@ public final class PRService {
     }
 
     public func fetch(host: String, now: Date = Date()) async throws -> PRSnapshot {
+        // GitHubAPI.graphqlURL force-unwraps its URL; validate first so an invalid host
+        // (e.g. containing a slash or space) throws instead of crashing.
+        guard host == "github.com" || URL(string: "https://\(host)/api/graphql") != nil else {
+            throw GitHubError.graphql("ungültiger Host")
+        }
         // token(for:) shells out to `gh` and can block for real time (network/prompt/hang);
         // run it off the caller's executor so a @MainActor caller (Task 11) never freezes.
         let tokens = self.tokens

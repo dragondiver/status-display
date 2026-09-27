@@ -8,6 +8,8 @@ struct SettingsView: View {
     @State private var newHost = ""
     @State private var presets: [StatusPreset] = []
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var ghPathText = ""
+    @State private var portText = ""
 
     var body: some View {
         TabView {
@@ -19,8 +21,20 @@ struct SettingsView: View {
         .padding()
         .onAppear {
             presets = model.presets
+            ghPathText = model.settings.ghPath
+            portText = String(model.settings.port)
             NSApp.activate()
         }
+    }
+
+    /// Nur gültige Ports (1024…65535) werden übernommen; sonst bleibt der bisherige Wert bestehen
+    /// und das Feld wird auf ihn zurückgesetzt.
+    private func applyPort() {
+        guard let value = UInt16(portText), (1024...65535).contains(value) else {
+            portText = String(model.settings.port)
+            return
+        }
+        model.settings.port = value
     }
 
     private var general: some View {
@@ -36,12 +50,15 @@ struct SettingsView: View {
                 HStack {
                     TextField("z. B. ghe.firma.de", text: $newHost)
                     Button("Hinzufügen") {
-                        let h = newHost.trimmingCharacters(in: .whitespaces)
-                        if !h.isEmpty && !model.settings.hosts.contains(h) { model.settings.hosts.append(h) }
+                        if let h = AppSettings.normalizedHost(newHost), !model.settings.hosts.contains(h) {
+                            model.settings.hosts.append(h)
+                        }
                         newHost = ""
                     }
                 }
-                TextField("Pfad zu gh (leer = automatisch)", text: $model.settings.ghPath)
+                TextField("Pfad zu gh (leer = automatisch)", text: $ghPathText)
+                    .onSubmit { model.settings.ghPath = ghPathText }
+                    .onDisappear { model.settings.ghPath = ghPathText }
             }
             Section("Display") {
                 Slider(value: Binding(get: { Double(model.settings.brightness) },
@@ -88,7 +105,10 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("Port").frame(width: 60, alignment: .leading)
-                    TextField("47615", value: $model.settings.port, format: .number.grouping(.never)).frame(width: 90)
+                    TextField("47615", text: $portText)
+                        .frame(width: 90)
+                        .onSubmit { applyPort() }
+                        .onDisappear { applyPort() }
                     if case .failed(let m) = model.serverState { Text(m).foregroundStyle(.red) }
                 }
                 HStack {

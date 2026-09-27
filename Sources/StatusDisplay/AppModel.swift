@@ -22,16 +22,16 @@ final class AppModel: ObservableObject {
     private let transport = AKP02Transport()
     private let support = AppSupport()
     private let knownPresets = Locked<Set<String>>([])
-    private var prService: PRService
     private var server: HTTPServer?
     private var timers: [Timer] = []
     private var renderScheduled = false
+    private var prsRefreshRunning = false
+    private var prsRefreshPending = false
 
     init() {
         let settings = AppSettings.load()
         self.settings = settings
         display = DisplayController(brightness: settings.brightness)
-        prService = PRService(tokens: GHCLITokenProvider(customPath: settings.ghPath))
         status = statusStore.effective()
         presets = statusStore.presets
         knownPresets.value = Set(presets.map(\.id))
@@ -89,22 +89,48 @@ final class AppModel: ObservableObject {
 
     func regenerateToken() {
         server?.stop()
-        _ = try? support.regenerateToken()
-        startServer()
+        do {
+            _ = try support.regenerateToken()
+            startServer()
+        } catch {
+            serverState = .failed("Token konnte nicht erzeugt werden: \(error.localizedDescription)")
+        }
     }
 
+    /// Single-flight: läuft bereits ein Refresh, wird nur vorgemerkt statt eines zweiten,
+    /// parallelen Laufs (der sonst ältere Ergebnisse über neuere schreiben könnte).
     func refreshPRs() async {
+        guard !prsRefreshRunning else {
+            prsRefreshPending = true
+            return
+        }
+        prsRefreshRunning = true
+        defer { prsRefreshRunning = false }
+        repeat {
+            prsRefreshPending = false
+            await runPRRefresh()
+        } while prsRefreshPending
+    }
+
+    private func runPRRefresh() async {
+        // Hosts und PRService werden hier, zu Laufbeginn, aus den aktuellen Einstellungen gebaut,
+        // damit ein während des Laufs geänderter gh-Pfad/Host-Satz nicht mit veralteten Werten arbeitet.
         let hosts = settings.hosts
+        let service = PRService(tokens: GHCLITokenProvider(customPath: settings.ghPath))
         for host in hosts {
             do {
-                prs.record(try await prService.fetch(host: host))
+                let snapshot = try await service.fetch(host: host)
+                guard settings.hosts.contains(host) else { continue }
+                prs.record(snapshot)
             } catch let error as GitHubError {
+                guard settings.hosts.contains(host) else { continue }
                 prs.record(error, host: host)
             } catch {
+                guard settings.hosts.contains(host) else { continue }
                 prs.record(.http(0), host: host)
             }
         }
-        prs.retain(hosts: hosts)
+        prs.retain(hosts: settings.hosts)
         scheduleRender()
     }
 
@@ -155,8 +181,15 @@ final class AppModel: ObservableObject {
         let s = HTTPServer(port: port, handler: router.handle)
         s.onStateChange = { [weak self] state in
             Task { @MainActor in
-                self?.serverState = state
-                if state == .ready { try? self?.support.writeEndpoint(Endpoint(port: port)) }
+                guard let self else { return }
+                self.serverState = state
+                if state == .ready {
+                    do {
+                        try self.support.writeEndpoint(Endpoint(port: port))
+                    } catch {
+                        self.serverState = .failed("endpoint.json konnte nicht geschrieben werden: \(error.localizedDescription)")
+                    }
+                }
             }
         }
         do {
@@ -174,7 +207,6 @@ final class AppModel: ObservableObject {
         }
         if old.brightness != settings.brightness { display.setBrightness(settings.brightness) }
         if old.hosts != settings.hosts || old.ghPath != settings.ghPath {
-            prService = PRService(tokens: GHCLITokenProvider(customPath: settings.ghPath))
             Task { await refreshPRs() }
         }
     }
