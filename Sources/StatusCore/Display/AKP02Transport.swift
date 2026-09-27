@@ -22,6 +22,10 @@ final class IOHIDWriter: HIDReportWriter {
 }
 
 /// Findet das AKP02 über IOHIDManager und meldet An- und Abstecken (Callbacks auf dem Main-Runloop).
+///
+/// Der Aufrufer muss die Instanz am Leben erhalten, solange sie gestartet ist: `start()` reicht
+/// `self` als unretained Kontext an IOKit-Callbacks weiter, die während des Laufs der Runloop
+/// jederzeit feuern können.
 public final class AKP02Transport {
     public var onConnect: ((HIDReportWriter) -> Void)?
     public var onDisconnect: (() -> Void)?
@@ -35,7 +39,8 @@ public final class AKP02Transport {
         IOHIDManagerSetDeviceMatching(manager, match as CFDictionary)
     }
 
-    public func start() {
+    @discardableResult
+    public func start() -> IOReturn {
         let context = Unmanaged.passUnretained(self).toOpaque()
         IOHIDManagerRegisterDeviceMatchingCallback(manager, { context, _, _, device in
             Unmanaged<AKP02Transport>.fromOpaque(context!).takeUnretainedValue().attach(device)
@@ -44,7 +49,7 @@ public final class AKP02Transport {
             Unmanaged<AKP02Transport>.fromOpaque(context!).takeUnretainedValue().detach(device)
         }, context)
         IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
-        IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+        return IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
     }
 
     private func attach(_ device: IOHIDDevice) {

@@ -14,16 +14,22 @@ enum CLI {
         let jpeg = PanelImage.encode(landscape: ctx.makeImage()!)
         let controller = DisplayController(brightness: 60)
         let transport = AKP02Transport()
-        var connected = false
+        var everConnected = false
         controller.onStateChange = { state in
-            connected = state == .connected
+            if state == .connected { everConnected = true }
             print(state == .connected ? "Display verbunden" : "Display getrennt")
         }
         transport.onConnect = { controller.attach($0); controller.show(jpeg: jpeg) }
         transport.onDisconnect = { controller.detach() }
-        transport.start()
-        RunLoop.main.run(until: Date().addingTimeInterval(15))
-        if !connected { print("Kein AKP02 gefunden (0300:3017)") }
-        return connected ? 0 : 1
+        let openResult = transport.start()
+        guard openResult == kIOReturnSuccess else {
+            print(String(format: "HID-Manager konnte nicht geöffnet werden (IOReturn %#x)", openResult))
+            return 1
+        }
+        withExtendedLifetime(transport) {
+            RunLoop.main.run(until: Date().addingTimeInterval(15))
+        }
+        if !everConnected { print("Kein AKP02 gefunden (0300:3017)") }
+        return everConnected ? 0 : 1
     }
 }
