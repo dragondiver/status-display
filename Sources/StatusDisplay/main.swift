@@ -7,6 +7,8 @@ case "version":
     exit(0)
 case "display-test":
     exit(CLI.displayTest())
+case "preview":
+    exit(CLI.preview(arguments.dropFirst().first))
 default:
     StatusDisplayApp.main()
 }

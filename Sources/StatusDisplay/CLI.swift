@@ -33,3 +33,31 @@ enum CLI {
         return everConnected ? 0 : 1
     }
 }
+
+extension CLI {
+    /// Schreibt ein Beispiel-Board als PNG (Querformat) zur Sichtprüfung.
+    static func preview(_ path: String?) -> Int32 {
+        guard let path else { print("Aufruf: StatusDisplay preview <datei.png>"); return 2 }
+        let now = Date()
+        let agents = [
+            AgentActivity(id: "1", source: "claude-code", name: "rundfunk", state: .waiting,
+                          since: now.addingTimeInterval(-240), lastSeen: now),
+            AgentActivity(id: "2", source: "claude-code", name: "telefon-ai", state: .running,
+                          since: now.addingTimeInterval(-900), lastSeen: now),
+            AgentActivity(id: "3", source: "codex", name: "heim-agent", state: .done,
+                          since: now.addingTimeInterval(-60), lastSeen: now),
+        ]
+        let state = BoardState(statusName: "Deep Focus", statusColor: RGBColor(hex: "#B3263E")!,
+                               statusSince: now.addingTimeInterval(-47 * 60), agents: agents,
+                               prs: PRZone(toReview: 3, mine: 2, ciFailing: 1, lastSuccess: now, isStale: false),
+                               now: now)
+        do {
+            try PanelImage.png(BoardRenderer.render(state)).write(to: URL(fileURLWithPath: path))
+            print(path)
+            return 0
+        } catch {
+            print("Schreiben fehlgeschlagen: \(error)")
+            return 1
+        }
+    }
+}
