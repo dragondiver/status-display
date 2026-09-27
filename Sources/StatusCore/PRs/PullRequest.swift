@@ -6,10 +6,12 @@ public struct PullRequest: Equatable, Identifiable {
     public let repository: String
     public let url: URL
     public let ciFailing: Bool
+    public let isDraft: Bool
     public var id: String { url.absoluteString }
 
-    public init(number: Int, title: String, repository: String, url: URL, ciFailing: Bool) {
+    public init(number: Int, title: String, repository: String, url: URL, ciFailing: Bool, isDraft: Bool = false) {
         self.number = number; self.title = title; self.repository = repository; self.url = url; self.ciFailing = ciFailing
+        self.isDraft = isDraft
     }
 }
 
@@ -20,7 +22,7 @@ public struct PRSnapshot: Equatable {
     public let fetchedAt: Date
     /// Teilantwort: GitHub lieferte Daten und zusätzlich Fehler (erste Meldung).
     public let warning: String?
-    public var ciFailingCount: Int { mine.filter(\.ciFailing).count }
+    public var ciFailingCount: Int { mine.filter { $0.ciFailing && !$0.isDraft }.count }
 
     public init(host: String, toReview: [PullRequest], mine: [PullRequest], fetchedAt: Date, warning: String? = nil) {
         self.host = host; self.toReview = toReview; self.mine = mine; self.fetchedAt = fetchedAt

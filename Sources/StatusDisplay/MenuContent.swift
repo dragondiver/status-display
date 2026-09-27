@@ -61,7 +61,7 @@ struct MenuContent: View {
         Menu(title) {
             if pulls.isEmpty { Text("keine") }
             ForEach(pulls) { pr in
-                Button((pr.ciFailing ? "● " : "") + "\(pr.repository)#\(pr.number) \(pr.title)") {
+                Button((pr.ciFailing ? "● " : "") + (pr.isDraft ? "Draft · " : "") + "\(pr.repository)#\(pr.number) \(pr.title)") {
                     NSWorkspace.shared.open(pr.url)
                 }
             }

@@ -4,8 +4,9 @@ import XCTest
 final class PRAggregatorTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_790_000_000)
 
-    private func pr(_ n: Int, failing: Bool = false) -> PullRequest {
-        PullRequest(number: n, title: "t", repository: "a/b", url: URL(string: "https://x/\(n)")!, ciFailing: failing)
+    private func pr(_ n: Int, failing: Bool = false, draft: Bool = false) -> PullRequest {
+        PullRequest(number: n, title: "t", repository: "a/b", url: URL(string: "https://x/\(n)")!,
+                   ciFailing: failing, isDraft: draft)
     }
 
     func testEmptyIsUnknownAndStale() {
@@ -38,6 +39,17 @@ final class PRAggregatorTests: XCTestCase {
         a.retain(hosts: ["github.com"])
         XCTAssertTrue(a.snapshots.isEmpty)
         XCTAssertTrue(a.errors.isEmpty)
+    }
+
+    func testDraftPRWithFailingCIDoesNotCountInZoneButNonDraftDoes() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "github.com",
+                            toReview: [],
+                            mine: [pr(1, failing: true, draft: true), pr(2, failing: true)],
+                            fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["github.com"])
+        XCTAssertEqual(z.ciFailing, 1)
+        XCTAssertEqual(z.mine, 2)
     }
 
     func testConfiguredHostWithoutSnapshotMakesZoneStale() {

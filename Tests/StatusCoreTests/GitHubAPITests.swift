@@ -29,6 +29,25 @@ final class GitHubAPITests: XCTestCase {
         XCTAssertEqual(s.ciFailingCount, 1)
         XCTAssertEqual(s.toReview[0].repository, "a/b")
         XCTAssertEqual(s.fetchedAt, now)
+        XCTAssertFalse(s.mine[0].isDraft)
+    }
+
+    func testDraftIsReadFromResponseAndExcludedFromCiFailingCount() throws {
+        let json = #"""
+        {"data":{
+          "review":{"nodes":[]},
+          "mine":{"nodes":[
+            {"number":1,"title":"Draft rot","url":"https://github.com/a/c/pull/1","repository":{"nameWithOwner":"a/c"},"isDraft":true,"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]}},
+            {"number":2,"title":"Nicht-Draft rot","url":"https://github.com/a/c/pull/2","repository":{"nameWithOwner":"a/c"},"isDraft":false,"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]}}
+          ]}
+        }}
+        """#
+        let s = try GitHubAPI.parse(Data(json.utf8), host: "github.com", at: now)
+        XCTAssertTrue(s.mine[0].isDraft)
+        XCTAssertFalse(s.mine[1].isDraft)
+        XCTAssertTrue(s.mine[0].ciFailing)
+        XCTAssertTrue(s.mine[1].ciFailing)
+        XCTAssertEqual(s.ciFailingCount, 1)
     }
 
     func testGraphQLErrorWithoutData() {
