@@ -61,3 +61,15 @@ extension CLI {
         }
     }
 }
+
+extension CLI {
+    /// Von Claude Code/Codex als Hook aufgerufen. Schreibt nie auf stdout, endet immer mit 0.
+    static func hook(_ source: String?) -> Int32 {
+        let payload = FileHandle.standardInput.readDataToEndOfFile()
+        guard let event = (try? HookEventMapper.event(source: source ?? "claude-code", payload: payload)) ?? nil else { return 0 }
+        let support = AppSupport()
+        guard let token = support.readToken(), let endpoint = support.readEndpoint() else { return 0 }
+        _ = EventSender.send(event, endpoint: endpoint, token: token)
+        return 0
+    }
+}
