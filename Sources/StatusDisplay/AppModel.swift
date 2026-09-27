@@ -1,0 +1,181 @@
+import AppKit
+import StatusCore
+import SwiftUI
+
+/// Verdrahtet alle Einheiten. Alles hier läuft auf dem Main-Thread.
+@MainActor
+final class AppModel: ObservableObject {
+    @Published private(set) var status: (preset: StatusPreset, since: Date)
+    @Published private(set) var presets: [StatusPreset]
+    @Published private(set) var agents: [AgentActivity] = []
+    @Published private(set) var prs = PRAggregator()
+    @Published private(set) var displayState: DisplayController.State = .disconnected
+    @Published private(set) var serverState: HTTPServer.State = .stopped
+    @Published private(set) var token = ""
+    @Published var settings: AppSettings {
+        didSet { if settings != oldValue { settings.save(); apply(oldValue) } }
+    }
+
+    let statusStore = StatusStore()
+    private let registry = AgentRegistry(time: SystemTime())
+    private let display: DisplayController
+    private let transport = AKP02Transport()
+    private let support = AppSupport()
+    private let knownPresets = Locked<Set<String>>([])
+    private var prService: PRService
+    private var server: HTTPServer?
+    private var timers: [Timer] = []
+    private var renderScheduled = false
+
+    init() {
+        let settings = AppSettings.load()
+        self.settings = settings
+        display = DisplayController(brightness: settings.brightness)
+        prService = PRService(tokens: GHCLITokenProvider(customPath: settings.ghPath))
+        status = statusStore.effective()
+        presets = statusStore.presets
+        knownPresets.value = Set(presets.map(\.id))
+
+        // Callbacks kommen auf dem Main-Thread an; Task @MainActor macht das für den Compiler explizit.
+        display.onStateChange = { [weak self] state in Task { @MainActor in self?.displayState = state } }
+        transport.onConnect = { [weak self] writer in Task { @MainActor in self?.display.attach(writer) } }
+        transport.onDisconnect = { [weak self] in Task { @MainActor in self?.display.detach() } }
+        transport.start()
+        startServer()
+
+        timers.append(Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshLocal() }
+        })
+        timers.append(Timer.scheduledTimer(withTimeInterval: PRAggregator.refreshInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.refreshPRs() }
+        })
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil,
+                                                          queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                self?.display.reinitialize()
+                self?.scheduleRender()
+            }
+        }
+        refreshLocal()
+        Task { await refreshPRs() }
+    }
+
+    var hasWaitingAgent: Bool { agents.contains { $0.state == .waiting } }
+    var executablePath: String { Bundle.main.executablePath ?? "StatusDisplay" }
+
+    // MARK: Aktionen
+
+    func setStatus(_ id: String, duration: TimeInterval?) {
+        statusStore.set(id, for: duration)
+        refreshLocal()
+    }
+
+    func setStatusUntilEndOfDay(_ id: String) {
+        statusStore.setUntilEndOfDay(id)
+        refreshLocal()
+    }
+
+    func updatePresets(_ newPresets: [StatusPreset]) {
+        statusStore.setPresets(newPresets)
+        presets = statusStore.presets
+        knownPresets.value = Set(presets.map(\.id))
+        refreshLocal()
+    }
+
+    func dismissAgent(_ id: String) {
+        registry.dismiss(id: id)
+        refreshLocal()
+    }
+
+    func regenerateToken() {
+        server?.stop()
+        _ = try? support.regenerateToken()
+        startServer()
+    }
+
+    func refreshPRs() async {
+        let hosts = settings.hosts
+        for host in hosts {
+            do {
+                prs.record(try await prService.fetch(host: host))
+            } catch let error as GitHubError {
+                prs.record(error, host: host)
+            } catch {
+                prs.record(.http(0), host: host)
+            }
+        }
+        prs.retain(hosts: hosts)
+        scheduleRender()
+    }
+
+    // MARK: Intern
+
+    private func handle(_ event: AgentEvent) {
+        try? registry.apply(event)
+        refreshLocal()
+    }
+
+    private func refreshLocal() {
+        status = statusStore.effective()
+        agents = registry.snapshot()
+        scheduleRender()
+    }
+
+    /// Höchstens zwei Renderläufe pro Sekunde.
+    private func scheduleRender() {
+        guard !renderScheduled else { return }
+        renderScheduled = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard let self else { return }
+            self.renderScheduled = false
+            let now = Date()
+            let state = BoardState(statusName: status.preset.name, statusColor: status.preset.color,
+                                   statusSince: status.since, agents: agents, prs: prs.zone(now: now), now: now)
+            display.show(jpeg: PanelImage.encode(landscape: BoardRenderer.render(state)))
+        }
+    }
+
+    private func startServer() {
+        do {
+            token = try support.loadOrCreateToken()
+        } catch {
+            serverState = .failed("Token: \(error.localizedDescription)")
+            return
+        }
+        let deliver: (AgentEvent) -> Void = { [weak self] event in
+            Task { @MainActor in self?.handle(event) }
+        }
+        let mcp = MCPHandler(onEvent: deliver)
+        let router = IngressRouter(token: token, knownPresets: knownPresets, mcp: mcp.handle, onEvent: deliver,
+                                   onStatus: { [weak self] id, duration in
+                                       Task { @MainActor in self?.setStatus(id, duration: duration) }
+                                   })
+        let port = settings.port
+        let s = HTTPServer(port: port, handler: router.handle)
+        s.onStateChange = { [weak self] state in
+            Task { @MainActor in
+                self?.serverState = state
+                if state == .ready { try? self?.support.writeEndpoint(Endpoint(port: port)) }
+            }
+        }
+        do {
+            try s.start()
+            server = s
+        } catch {
+            serverState = .failed(error.localizedDescription)
+        }
+    }
+
+    private func apply(_ old: AppSettings) {
+        if old.port != settings.port {
+            server?.stop()
+            startServer()
+        }
+        if old.brightness != settings.brightness { display.setBrightness(settings.brightness) }
+        if old.hosts != settings.hosts || old.ghPath != settings.ghPath {
+            prService = PRService(tokens: GHCLITokenProvider(customPath: settings.ghPath))
+            Task { await refreshPRs() }
+        }
+    }
+}
