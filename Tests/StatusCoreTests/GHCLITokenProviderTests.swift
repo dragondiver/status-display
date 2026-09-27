@@ -30,4 +30,20 @@ final class GHCLITokenProviderTests: XCTestCase {
         XCTAssertEqual(GHCLITokenProvider(customPath: "/x/gh").candidates.first, "/x/gh")
         XCTAssertEqual(GHCLITokenProvider(customPath: "").candidates.first, "/opt/homebrew/bin/gh")
     }
+
+    func testTimesOutInsteadOfHangingForever() throws {
+        let path = try script("sleep 5")
+        let start = Date()
+        XCTAssertThrowsError(try GHCLITokenProvider(candidates: [path], timeout: 0.5).token(for: "h")) {
+            XCTAssertEqual($0 as? GitHubError, .ghTimeout)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 2)
+    }
+
+    func testLargeStderrDoesNotDeadlock() throws {
+        // ~200 KB > the typical 64 KB pipe buffer: if stderr were still piped and unread,
+        // gh would block writing to it and this call would hang.
+        let path = try script(#"yes "x" | head -c 200000 >&2; echo gho_ok"#)
+        XCTAssertEqual(try GHCLITokenProvider(candidates: [path]).token(for: "h"), "gho_ok")
+    }
 }

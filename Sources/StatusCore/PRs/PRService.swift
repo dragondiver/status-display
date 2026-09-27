@@ -10,7 +10,12 @@ public final class PRService {
     }
 
     public func fetch(host: String, now: Date = Date()) async throws -> PRSnapshot {
-        let token = try tokens.token(for: host)
+        // token(for:) shells out to `gh` and can block for real time (network/prompt/hang);
+        // run it off the caller's executor so a @MainActor caller (Task 11) never freezes.
+        let tokens = self.tokens
+        let token = try await Task.detached {
+            try tokens.token(for: host)
+        }.value
         var request = URLRequest(url: GitHubAPI.graphqlURL(host: host), timeoutInterval: 20)
         request.httpMethod = "POST"
         request.setValue("bearer \(token)", forHTTPHeaderField: "Authorization")

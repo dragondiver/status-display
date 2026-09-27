@@ -31,6 +31,7 @@ public enum GitHubError: Error, Equatable {
     case http(Int)
     case graphql(String)
     case decoding
+    case ghTimeout
 
     public var message: String {
         switch self {
@@ -39,6 +40,7 @@ public enum GitHubError: Error, Equatable {
         case .http(let code): return code == 0 ? "keine Verbindung" : "HTTP \(code)"
         case .graphql(let m): return "GitHub: \(m)"
         case .decoding: return "unerwartete Antwort"
+        case .ghTimeout: return "gh antwortet nicht (Zeitüberschreitung)"
         }
     }
 }
