@@ -24,8 +24,7 @@ public enum BoardRenderer {
         drawStatus(ctx, s)
         drawAgents(ctx, s)
         drawPRs(ctx, s)
-        drawClock(ctx, s)
-        for x in [1240, 1660] { fill(ctx, CGRect(x: x - 1, y: 40, width: 2, height: 382), separator) }
+        fill(ctx, CGRect(x: 1239, y: 40, width: 2, height: 382), separator)
         return ctx.makeImage()!
     }
 
@@ -35,12 +34,14 @@ public enum BoardRenderer {
         fill(ctx, CGRect(x: 0, y: 0, width: 480, height: height), s.statusColor)
         let words = s.statusName.uppercased().split(separator: " ").map(String.init).prefix(2)
         let size = words.map { BoardText.statusFontSize(for: $0, width: 420, maxSize: 92) }.min() ?? 92
-        var baseline: CGFloat = words.count > 1 ? 170 : 230
+        var baseline: CGFloat = words.count > 1 ? 110 : 150
         for w in words {
             text(ctx, w, x: 40, baseline: baseline, size: size, bold: true, color: white)
             baseline += size + 8
         }
-        text(ctx, BoardText.since(s.statusSince, now: s.now), x: 40, baseline: 420, size: 38,
+        // Uhr unten links in der Statuszone: 72 pt fett, darunter „seit …" kleiner.
+        text(ctx, BoardText.clock(s.now), x: 40, baseline: 400, size: 72, bold: true, color: white)
+        text(ctx, BoardText.since(s.statusSince, now: s.now), x: 40, baseline: 438, size: 30,
              color: white.withAlpha(0.8))
     }
 
@@ -70,36 +71,53 @@ public enum BoardRenderer {
         }
     }
 
+    /// Tabellenspalten relativ zu `x0`: Repo-Name (mit rotem Punkt bei roter CI), „zu reviewen",
+    /// „eigene offen".
+    private static let prRepoColumn: CGFloat = 50
+    private static let prToReviewColumn: CGFloat = 390
+    private static let prMineColumn: CGFloat = 530
+
     private static func drawPRs(_ ctx: CGContext, _ s: BoardState) {
         let x0: CGFloat = 1270
         let z = s.prs
-        if z.ciFailing > 0 && !z.isStale {
+        if z.ciFailingCount > 0 && !z.isStale {
             ctx.setStrokeColor(red.cgColor)
             ctx.setLineWidth(8)
-            ctx.stroke(CGRect(x: 1246, y: 6, width: 408, height: 450))
+            ctx.stroke(CGRect(x: 1246, y: 6, width: 668, height: 450))
         }
         text(ctx, "PRs", x: x0, baseline: 70, size: 34, color: muted)
+        if z.isStale, let t = z.lastSuccess {
+            text(ctx, "Stand \(BoardText.clock(t))", x: x0 + 460, baseline: 70, size: 28, color: grey)
+        }
         guard z.lastSuccess != nil else {
             text(ctx, "?", x: x0, baseline: 250, size: 110, bold: true, color: grey)
             return
         }
+        guard !z.rows.isEmpty else {
+            text(ctx, "keine PRs", x: x0, baseline: 200, size: 40, color: muted)
+            return
+        }
         let c = z.isStale ? grey : white
-        text(ctx, "\(z.toReview)", x: x0, baseline: 170, size: 72, bold: true, color: c)
-        text(ctx, "zu reviewen", x: x0 + 110, baseline: 165, size: 36, color: c)
-        text(ctx, "\(z.mine)", x: x0, baseline: 270, size: 72, bold: true, color: c)
-        text(ctx, "eigene offen", x: x0 + 110, baseline: 265, size: 36, color: c)
-        if z.ciFailing > 0 {
-            let rc = z.isStale ? grey : red
-            text(ctx, "\(z.ciFailing)", x: x0, baseline: 370, size: 72, bold: true, color: rc)
-            text(ctx, "CI rot", x: x0 + 110, baseline: 365, size: 36, color: rc)
-        }
-        if z.isStale, let t = z.lastSuccess {
-            text(ctx, "Stand \(BoardText.clock(t))", x: x0, baseline: 435, size: 30, color: grey)
-        }
-    }
+        text(ctx, "Repo", x: x0 + prRepoColumn, baseline: 110, size: 24, color: muted)
+        text(ctx, "Review", x: x0 + prToReviewColumn, baseline: 110, size: 24, color: muted)
+        text(ctx, "Offen", x: x0 + prMineColumn, baseline: 110, size: 24, color: muted)
 
-    private static func drawClock(_ ctx: CGContext, _ s: BoardState) {
-        text(ctx, BoardText.clock(s.now), x: 1685, baseline: 260, size: 72, bold: true, color: white)
+        let (rows, more) = BoardText.visiblePRRows(z.rows)
+        var baseline: CGFloat = 165
+        for row in rows {
+            if row.ciFailing {
+                ctx.setFillColor(red.cgColor)
+                ctx.fillEllipse(in: CGRect(x: x0, y: baseline - 32, width: 26, height: 26))
+            }
+            text(ctx, BoardText.truncate(row.repository, max: 16), x: x0 + prRepoColumn, baseline: baseline,
+                 size: 38, color: c)
+            text(ctx, "\(row.toReview)", x: x0 + prToReviewColumn, baseline: baseline, size: 38, bold: true, color: c)
+            text(ctx, "\(row.mine)", x: x0 + prMineColumn, baseline: baseline, size: 38, bold: true, color: c)
+            baseline += 55
+        }
+        if more > 0 {
+            text(ctx, "+\(more) weitere", x: x0 + prRepoColumn, baseline: baseline, size: 32, color: muted)
+        }
     }
 
     // MARK: Hilfen

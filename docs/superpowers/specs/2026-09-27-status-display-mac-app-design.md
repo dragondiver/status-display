@@ -39,26 +39,35 @@ Mit der Python-Library [deonspengler/akp02](https://github.com/deonspengler/akp0
   sonst stimmen die Farben nicht (`SHORT_AXIS_ALIGN_*` in der Library).
 - Helvetica hat kein `◐`; Symbole werden gezeichnet, nicht als Glyphen gesetzt.
 
-## Anzeige (Version 1)
+## Anzeige (Version 1, Layout seit Issue #14 27.09.2026)
 
 ```
-┌──────────────┬───────────────────────┬──────────────────┬──────────────┐
-│  DEEP FOCUS  │  AGENTEN              │  PRs             │  14:32       │
-│  seit 47 min │  ● telefon-ai  läuft  │  3  zu reviewen  │              │
-│              │  ◐ rundfunk    wartet │  2  eigene offen │              │
-│              │    auf dich (4 min)   │     1 CI rot     │              │
-│              │  ✓ heim-agent  fertig │                  │              │
-└──────────────┴───────────────────────┴──────────────────┴──────────────┘
-   480 px            ~700 px                ~460 px           ~280 px
+┌──────────────┬───────────────────────┬────────────────────────────────────┐
+│  DEEP        │  AGENTEN              │  PRs                               │
+│  FOCUS       │  ● telefon-ai  läuft  │        Repo          Review  Offen │
+│              │  ◐ rundfunk    wartet │  ●     telefon-ai       2      1   │
+│              │    auf dich (4 min)   │        rundfunk         1      0   │
+│  23:34       │  ✓ heim-agent  fertig │        heim-agent       0      0   │
+│  seit 47 min │                       │        +3 weitere                  │
+└──────────────┴───────────────────────┴────────────────────────────────────┘
+   480 px            ~760 px                        ~680 px
 ```
 
-- **Status**: groß, Farbe je Status, darunter „seit …". Die einzige Zone, die
-  für Kolleg:innen gedacht ist.
+- **Status**: Name rückt nach oben, Farbe je Status. Unten links in derselben
+  Zone die Uhr (72 pt fett) mit „seit …" darunter. Die einzige Zone, die für
+  Kolleg:innen gedacht ist.
 - **Agenten**: höchstens 4 Zeilen, sortiert *wartet* → *Fehler* → *läuft* →
   *fertig*. „Wartet auf dich" ist das stärkste Signal der ganzen Anzeige
   (Akzentfarbe, Dauer). Mehr als 4: letzte Zeile „+2 weitere".
-- **PRs**: nur Zahlen. Roter Rand der Zone, wenn ein eigener PR rote CI hat.
-- **Uhr**: Stunden:Minuten. Platz für „nächster Termin" in Version 2.
+- **PRs**: eine Tabelle statt Summen, eine Zeile pro Repo (Repo · zu reviewen ·
+  eigene offen). Roter Punkt vor dem Repo, wenn dort ein eigener Nicht-Draft-PR
+  rote CI hat; roter Rand der ganzen Zone bei mindestens einem eigenen
+  Nicht-Draft-PR mit roter CI, unabhängig von Anheften/Ausblenden. Angeheftete
+  Repos (Einstellung `pinnedRepos`, zunächst leer, Auswahl-UI folgt) erscheinen
+  immer, auch mit 0/0; andere Repos nur bei Review-Request oder eigenem
+  offenem PR; ausgeblendete Repos (`hiddenRepos`) nie. Sortierung: zuerst
+  „zu reviewen" > 0, dann angeheftet, dann der Rest. Höchstens 5 Zeilen,
+  danach „+N weitere".
 - **Veraltete Daten** werden nie still weiter angezeigt: Ist eine Quelle länger
   als 3 Abfrageintervalle ohne Erfolg, wird ihre Zone grau und zeigt das Alter
   („PRs · Stand 14:05").

@@ -34,11 +34,13 @@ struct MenuContent: View {
 
         Divider()
         Section("PRs") {
+            let zone = model.prs.zone(now: Date(), hosts: model.settings.hosts,
+                                      pinned: model.settings.pinnedRepos, hidden: model.settings.hiddenRepos)
+            if zone.rows.isEmpty { Text("keine") }
+            ForEach(zone.rows) { row in
+                repoMenu(row)
+            }
             ForEach(model.settings.hosts, id: \.self) { host in
-                if let snap = model.prs.snapshots[host] {
-                    prMenu("\(host): \(snap.toReview.count) zu reviewen", snap.toReview)
-                    prMenu("\(host): \(snap.mine.count) eigene (\(snap.ciFailingCount) CI rot)", snap.mine)
-                }
                 if let warning = model.prs.snapshots[host]?.warning { Text("\(host): Hinweis: \(warning)") }
                 if let error = model.prs.errors[host] { Text("\(host): \(error.message)") }
             }
@@ -57,14 +59,24 @@ struct MenuContent: View {
     }
 
     @ViewBuilder
-    private func prMenu(_ title: String, _ pulls: [PullRequest]) -> some View {
-        Menu(title) {
+    private func repoMenu(_ row: PRRow) -> some View {
+        Menu("\(row.ciFailing ? "● " : "")\(row.repository) – \(row.toReview) zu reviewen · \(row.mine) offen") {
+            let pulls = pullRequests(forRepoKey: row.repoKey)
             if pulls.isEmpty { Text("keine") }
             ForEach(pulls) { pr in
-                Button((pr.ciFailing ? "● " : "") + (pr.isDraft ? "Draft · " : "") + "\(pr.repository)#\(pr.number) \(pr.title)") {
+                Button((pr.ciFailing ? "● " : "") + (pr.isDraft ? "Draft · " : "") + "#\(pr.number) \(pr.title)") {
                     NSWorkspace.shared.open(pr.url)
                 }
             }
         }
+    }
+
+    /// Alle eigenen PRs und Review-Requests für ein Repo (`host/owner/name`), über alle Hosts,
+    /// ohne Duplikate (falls dieselbe PR in beiden Suchen auftaucht).
+    private func pullRequests(forRepoKey repoKey: String) -> [PullRequest] {
+        var seen = Set<String>()
+        return model.prs.snapshots.values
+            .flatMap { snap in (snap.toReview + snap.mine).filter { "\(snap.host)/\($0.repository)" == repoKey } }
+            .filter { seen.insert($0.id).inserted }
     }
 }

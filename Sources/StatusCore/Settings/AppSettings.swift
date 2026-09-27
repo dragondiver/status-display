@@ -6,8 +6,30 @@ public struct AppSettings: Codable, Equatable {
     public var brightness = 60
     public var port: UInt16 = 47615
     public var ghPath = ""
+    /// Einträge der Form `host/owner/name`. Erscheinen in der PR-Tabelle immer, auch mit 0/0.
+    /// Zunächst leer; die Auswahl-UI dafür folgt in einer eigenen Karte.
+    public var pinnedRepos: [String] = []
+    /// Einträge der Form `host/owner/name`. Erscheinen nie in der PR-Tabelle.
+    public var hiddenRepos: [String] = []
 
     public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case hosts, brightness, port, ghPath, pinnedRepos, hiddenRepos
+    }
+
+    // Handgeschrieben statt synthetisiert: Felder, die es in gespeicherten Einstellungen noch
+    // nicht gibt (z. B. `pinnedRepos`/`hiddenRepos`, hinzugefügt nach dem ersten Release), sollen
+    // beim Dekodieren auf ihren Default fallen statt den ganzen Ladevorgang scheitern zu lassen.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        hosts = try c.decodeIfPresent([String].self, forKey: .hosts) ?? AppSettings().hosts
+        brightness = try c.decodeIfPresent(Int.self, forKey: .brightness) ?? AppSettings().brightness
+        port = try c.decodeIfPresent(UInt16.self, forKey: .port) ?? AppSettings().port
+        ghPath = try c.decodeIfPresent(String.self, forKey: .ghPath) ?? AppSettings().ghPath
+        pinnedRepos = try c.decodeIfPresent([String].self, forKey: .pinnedRepos) ?? []
+        hiddenRepos = try c.decodeIfPresent([String].self, forKey: .hiddenRepos) ?? []
+    }
 
     private static let key = "settings"
 

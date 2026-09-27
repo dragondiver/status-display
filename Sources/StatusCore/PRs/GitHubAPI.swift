@@ -9,8 +9,8 @@ public enum GitHubAPI {
 
     public static let query = """
     query {
-      review: search(query: "is:open is:pr archived:false review-requested:@me", type: ISSUE, first: 50) { nodes { ...pr } }
-      mine: search(query: "is:open is:pr archived:false author:@me", type: ISSUE, first: 50) { nodes { ...pr } }
+      review: search(query: "is:open is:pr archived:false review-requested:@me", type: ISSUE, first: 100) { nodes { ...pr } }
+      mine: search(query: "is:open is:pr archived:false author:@me", type: ISSUE, first: 100) { nodes { ...pr } }
     }
     fragment pr on PullRequest {
       number title url repository { nameWithOwner } isDraft

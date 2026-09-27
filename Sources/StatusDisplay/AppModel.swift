@@ -190,7 +190,9 @@ final class AppModel: ObservableObject {
             let now = Date()
             let state = BoardState(statusName: status.preset.name, statusColor: status.preset.color,
                                    statusSince: status.since, agents: agents,
-                                   prs: prs.zone(now: now, hosts: settings.hosts), now: now)
+                                   prs: prs.zone(now: now, hosts: settings.hosts,
+                                                pinned: settings.pinnedRepos, hidden: settings.hiddenRepos),
+                                   now: now)
             display.show(jpeg: PanelImage.encode(landscape: BoardRenderer.render(state)))
         }
     }

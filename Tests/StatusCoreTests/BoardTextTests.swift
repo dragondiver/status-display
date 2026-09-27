@@ -51,6 +51,18 @@ final class BoardTextTests: XCTestCase {
         XCTAssertEqual(BoardText.visibleAgents(six).more, 3)
     }
 
+    func testVisiblePRRows() {
+        func row(_ n: Int) -> PRRow {
+            PRRow(repoKey: "github.com/f/r\(n)", repository: "r\(n)", toReview: 0, mine: 0, ciFailing: false)
+        }
+        let four = (0..<4).map(row)
+        XCTAssertEqual(BoardText.visiblePRRows(four).rows.count, 4)
+        XCTAssertEqual(BoardText.visiblePRRows(four).more, 0)
+        let seven = (0..<7).map(row)
+        XCTAssertEqual(BoardText.visiblePRRows(seven).rows.count, 4)
+        XCTAssertEqual(BoardText.visiblePRRows(seven).more, 3)
+    }
+
     func testStatusFontShrinksForLongWords() {
         XCTAssertEqual(BoardText.statusFontSize(for: "DEEP", width: 420, maxSize: 92), 92)
         XCTAssertLessThan(BoardText.statusFontSize(for: "VERFÜGBARKEIT", width: 420, maxSize: 92), 60)
