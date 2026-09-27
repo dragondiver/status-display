@@ -14,7 +14,7 @@ public enum HookSnippets {
     public static let codexFeatureFlag = "[features]\nhooks = true"
 
     public static func hooksJSON(executable: String, source: String, events: [String]) -> String {
-        let command = "'\(executable)' hook \(source)"
+        let command = "\(shellQuoted(executable)) hook \(source)"
         var hooks: [String: Any] = [:]
         for event in events {
             hooks[event] = [["hooks": [["type": "command", "command": command, "timeout": 2]]]]
@@ -29,6 +29,12 @@ public enum HookSnippets {
             "url": "http://127.0.0.1:\(port)/mcp",
             "headers": ["Authorization": "Bearer \(token)"],
         ] as [String: Any]])
+    }
+
+    /// Einzeln in Anführungszeichen für die Shell, mit Escaping enthaltener `'` (POSIX-Standardtrick:
+    /// `'` schließt die Anführung, `\'` fügt das Zeichen literal ein, `'` öffnet sie wieder).
+    private static func shellQuoted(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 
     private static func pretty(_ object: Any) -> String {
