@@ -28,8 +28,15 @@ public final class AgentRegistry {
         item.project = event.project ?? item.project
         item.name = event.name ?? event.project ?? item.project ?? item.name
         item.detail = event.detail
-        if let u = event.url { item.url = URL(string: u) }
+        if let u = event.url { item.url = Self.webURL(u) }
         items[id] = item
+    }
+
+    /// Nur http(s): Das Menü öffnet die URL, `file:` oder eigene Schemata sollen keine Apps starten.
+    static func webURL(_ string: String) -> URL? {
+        guard let url = URL(string: string), let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else { return nil }
+        return url
     }
 
     public func dismiss(id: String) { items[id] = nil }

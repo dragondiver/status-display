@@ -3,15 +3,20 @@ import Foundation
 
 public enum BoardText {
     public static func since(_ start: Date, now: Date) -> String {
+        "seit " + duration(from: start, to: now)
+    }
+
+    /// „47 min“ bzw. ab einer Stunde „2:05 h“.
+    static func duration(from start: Date, to now: Date) -> String {
         let minutes = max(0, Int(now.timeIntervalSince(start) / 60))
-        return minutes < 60 ? "seit \(minutes) min" : String(format: "seit %d:%02d h", minutes / 60, minutes % 60)
+        return minutes < 60 ? "\(minutes) min" : String(format: "%d:%02d h", minutes / 60, minutes % 60)
     }
 
     public static func agentLabel(_ a: AgentActivity, now: Date) -> String {
-        if a.isStale { return "unklar" }
+        if a.isStale { return "unklar seit " + duration(from: a.lastSeen, to: now) }
         switch a.state {
         case .running: return "läuft"
-        case .waiting: return "wartet \(max(0, Int(now.timeIntervalSince(a.since) / 60))) min"
+        case .waiting: return "wartet " + duration(from: a.since, to: now)
         case .error: return "Fehler"
         case .done: return "fertig"
         }

@@ -62,6 +62,11 @@ public struct AppSupport {
         try JSONEncoder().encode(endpoint).write(to: endpointURL, options: .atomic)
     }
 
+    /// Hooks sollen das Token nie an einen Port schicken, den die App nicht (mehr) belegt.
+    public func removeEndpoint() {
+        try? FileManager.default.removeItem(at: endpointURL)
+    }
+
     public func readEndpoint() -> Endpoint? {
         (try? Data(contentsOf: endpointURL)).flatMap { try? JSONDecoder().decode(Endpoint.self, from: $0) }
     }

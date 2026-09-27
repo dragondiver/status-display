@@ -41,11 +41,14 @@ extension CLI {
         let now = Date()
         let agents = [
             AgentActivity(id: "1", source: "claude-code", name: "rundfunk", state: .waiting,
-                          since: now.addingTimeInterval(-240), lastSeen: now),
+                          since: now.addingTimeInterval(-65 * 60), lastSeen: now),
             AgentActivity(id: "2", source: "claude-code", name: "telefon-ai", state: .running,
                           since: now.addingTimeInterval(-900), lastSeen: now),
             AgentActivity(id: "3", source: "codex", name: "heim-agent", state: .done,
                           since: now.addingTimeInterval(-60), lastSeen: now),
+            AgentActivity(id: "4", source: "codex", name: "sprachkurs", state: .running,
+                          since: now.addingTimeInterval(-3 * 3600), lastSeen: now.addingTimeInterval(-65 * 60),
+                          isStale: true),
         ]
         let state = BoardState(statusName: "Deep Focus", statusColor: RGBColor(hex: "#B3263E")!,
                                statusSince: now.addingTimeInterval(-47 * 60), agents: agents,

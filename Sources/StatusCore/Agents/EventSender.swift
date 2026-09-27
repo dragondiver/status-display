@@ -12,7 +12,10 @@ public enum EventSender {
         request.httpBody = body
         let done = DispatchSemaphore(value: 0)
         let ok = Locked(false)
-        URLSession(configuration: .ephemeral).dataTask(with: request) { _, response, _ in
+        // Kein Proxy: eine PAC-Datei darf die Loopback-Anfrage samt Token nie über einen Proxy leiten.
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.connectionProxyDictionary = [:]
+        URLSession(configuration: configuration).dataTask(with: request) { _, response, _ in
             ok.value = (response as? HTTPURLResponse)?.statusCode == 202
             done.signal()
         }.resume()

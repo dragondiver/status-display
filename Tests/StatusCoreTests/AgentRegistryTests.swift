@@ -98,4 +98,16 @@ final class AgentRegistryTests: XCTestCase {
         XCTAssertThrowsError(try registry.apply(event("busy")))
         XCTAssertTrue(registry.snapshot().isEmpty)
     }
+
+    func testURLAcceptsOnlyHTTPAndHTTPS() throws {
+        func url(_ u: String) throws -> URL? {
+            try registry.apply(AgentEvent(source: "x", session: u, state: "running", name: nil, project: nil,
+                                          detail: nil, url: u))
+            return registry.snapshot().first { $0.id == "x:\(u)" }?.url
+        }
+        XCTAssertNil(try url("file:///Applications/Calculator.app"))
+        XCTAssertNil(try url("x-foo://bar"))
+        XCTAssertEqual(try url("https://github.com/a/b/pull/1"), URL(string: "https://github.com/a/b/pull/1"))
+        XCTAssertEqual(try url("HTTP://example.com"), URL(string: "HTTP://example.com"))
+    }
 }

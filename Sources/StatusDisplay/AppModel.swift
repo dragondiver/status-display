@@ -160,7 +160,8 @@ final class AppModel: ObservableObject {
             self.renderScheduled = false
             let now = Date()
             let state = BoardState(statusName: status.preset.name, statusColor: status.preset.color,
-                                   statusSince: status.since, agents: agents, prs: prs.zone(now: now), now: now)
+                                   statusSince: status.since, agents: agents,
+                                   prs: prs.zone(now: now, hosts: settings.hosts), now: now)
             display.show(jpeg: PanelImage.encode(landscape: BoardRenderer.render(state)))
         }
     }

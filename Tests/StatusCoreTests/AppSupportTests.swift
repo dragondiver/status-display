@@ -45,4 +45,13 @@ final class AppSupportTests: XCTestCase {
         try s.writeEndpoint(Endpoint(port: 47615))
         XCTAssertEqual(s.readEndpoint(), Endpoint(port: 47615))
     }
+
+    func testRemoveEndpoint() throws {
+        let s = temp()
+        s.removeEndpoint() // fehlt: kein Fehler
+        try s.writeEndpoint(Endpoint(port: 47615))
+        s.removeEndpoint()
+        XCTAssertNil(s.readEndpoint())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: s.endpointURL.path))
+    }
 }

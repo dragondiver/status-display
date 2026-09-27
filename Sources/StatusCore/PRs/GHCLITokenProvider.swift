@@ -74,6 +74,8 @@ public struct GHCLITokenProvider: TokenProviding {
             throw GitHubError.ghTimeout
         }
 
+        // Ein letzter Chunk kann nach dem Beenden noch in der Pipe liegen, bevor der Handler ihn sah.
+        if process.terminationStatus == 0 { buffer.append(out.fileHandleForReading.readDataToEndOfFile()) }
         let token = String(decoding: buffer.data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         guard process.terminationStatus == 0, !token.isEmpty else { throw GitHubError.notLoggedIn(host) }
         return token

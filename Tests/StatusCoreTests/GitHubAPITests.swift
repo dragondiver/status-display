@@ -40,4 +40,24 @@ final class GitHubAPITests: XCTestCase {
             XCTAssertEqual($0 as? GitHubError, .decoding)
         }
     }
+
+    func testDataWithErrorsKeepsPRsAndSetsWarning() throws {
+        let json = #"""
+        {"data":{
+          "review":{"nodes":[{"number":7,"title":"T","url":"https://github.com/a/b/pull/7","repository":{"nameWithOwner":"a/b"},"commits":{"nodes":[]}}]},
+          "mine":{"nodes":[null]}
+        },"errors":[{"message":"Resource not accessible by integration"},{"message":"zweiter"}]}
+        """#
+        let s = try GitHubAPI.parse(Data(json.utf8), host: "github.com", at: now)
+        XCTAssertEqual(s.toReview.map(\.number), [7])
+        XCTAssertEqual(s.warning, "Resource not accessible by integration")
+        let clean = try GitHubAPI.parse(Data(#"{"data":{"review":{"nodes":[]},"mine":{"nodes":[]}}}"#.utf8),
+                                        host: "github.com", at: now)
+        XCTAssertNil(clean.warning)
+    }
+
+    func testHTTP401Message() {
+        XCTAssertEqual(GitHubError.http(401).message, "Token abgelehnt (HTTP 401) – gh auth refresh ausführen")
+        XCTAssertEqual(GitHubError.http(502).message, "HTTP 502")
+    }
 }

@@ -59,7 +59,7 @@ public enum BoardRenderer {
             }
             ctx.setFillColor(color.cgColor)
             ctx.fillEllipse(in: CGRect(x: x0, y: baseline - 32, width: 26, height: 26))
-            // Name bis x≈940, Label ab 960 bis ≈1200: bleibt links der Trennlinie bei 1240.
+            // Name bis x≈940, Label ab 960 bis ≈1230 (längstes: „unklar seit 12:59 h“): bleibt links der Trennlinie bei 1240.
             text(ctx, BoardText.truncate(a.name, max: 16), x: x0 + 50, baseline: baseline, size: 44,
                  color: a.isStale ? grey : white)
             text(ctx, BoardText.agentLabel(a, now: s.now), x: x0 + 440, baseline: baseline, size: 34, color: color)

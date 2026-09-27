@@ -18,10 +18,13 @@ public struct PRSnapshot: Equatable {
     public let toReview: [PullRequest]
     public let mine: [PullRequest]
     public let fetchedAt: Date
+    /// Teilantwort: GitHub lieferte Daten und zusätzlich Fehler (erste Meldung).
+    public let warning: String?
     public var ciFailingCount: Int { mine.filter(\.ciFailing).count }
 
-    public init(host: String, toReview: [PullRequest], mine: [PullRequest], fetchedAt: Date) {
+    public init(host: String, toReview: [PullRequest], mine: [PullRequest], fetchedAt: Date, warning: String? = nil) {
         self.host = host; self.toReview = toReview; self.mine = mine; self.fetchedAt = fetchedAt
+        self.warning = warning
     }
 }
 
@@ -37,7 +40,9 @@ public enum GitHubError: Error, Equatable {
         switch self {
         case .ghNotFound: return "gh nicht gefunden – Pfad in den Einstellungen setzen"
         case .notLoggedIn(let host): return "gh nicht angemeldet: gh auth login --hostname \(host)"
-        case .http(let code): return code == 0 ? "keine Verbindung" : "HTTP \(code)"
+        case .http(0): return "keine Verbindung"
+        case .http(401): return "Token abgelehnt (HTTP 401) – gh auth refresh ausführen"
+        case .http(let code): return "HTTP \(code)"
         case .graphql(let m): return "GitHub: \(m)"
         case .decoding: return "unerwartete Antwort"
         case .ghTimeout: return "gh antwortet nicht (Zeitüberschreitung)"

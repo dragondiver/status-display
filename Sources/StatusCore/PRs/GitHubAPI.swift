@@ -28,7 +28,7 @@ public enum GitHubAPI {
             throw GitHubError.graphql(response.errors?.first?.message ?? "keine Daten")
         }
         return PRSnapshot(host: host, toReview: d.review.nodes.compactMap(pull), mine: d.mine.nodes.compactMap(pull),
-                          fetchedAt: date)
+                          fetchedAt: date, warning: response.errors?.first?.message)
     }
 
     private static func pull(_ node: Node?) -> PullRequest? {
