@@ -65,4 +65,25 @@ final class MCPHandlerTests: XCTestCase {
         let get = handler.handle(HTTPRequest(method: "GET", path: "/mcp"))
         XCTAssertEqual(get.status, 405)
     }
+
+    func testMissingMethodIsInvalidRequest() {
+        let (_, obj) = call(#"{"jsonrpc":"2.0","id":7}"#)
+        XCTAssertEqual((obj["error"] as? [String: Any])?["code"] as? Int, -32600)
+    }
+
+    func testSessionCapEvictsOldest() {
+        let firstSession = initialize()
+        var lastSession = firstSession
+        for _ in 0..<256 {
+            lastSession = initialize()
+        }
+
+        let (_, oldObj) = call(#"{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"report_status","arguments":{"state":"running","name":"x"}}}"#, session: firstSession)
+        XCTAssertNil((oldObj["result"] as? [String: Any])?["isError"])
+        XCTAssertEqual(events.last?.source, "mcp:mcp")
+
+        let (_, newObj) = call(#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"report_status","arguments":{"state":"running","name":"y"}}}"#, session: lastSession)
+        XCTAssertNil((newObj["result"] as? [String: Any])?["isError"])
+        XCTAssertEqual(events.last?.source, "mcp:copilot")
+    }
 }

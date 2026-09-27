@@ -28,16 +28,22 @@ public final class MCPHandler {
         ] as [String: Any],
     ]
 
+    /// Höchstzahl gleichzeitig gemerkter Sitzungen; älteste zuerst verdrängt.
+    static let maxSessions = 256
+
     private let onEvent: (AgentEvent) -> Void
-    private let clients = Locked<[String: String]>([:])
+    /// Klienten je Sitzung, plus Einfügereihenfolge zur Verdrängung der ältesten Sitzung.
+    private let clients = Locked<(byID: [String: String], order: [String])>(([:], []))
 
     public init(onEvent: @escaping (AgentEvent) -> Void) { self.onEvent = onEvent }
 
     public func handle(_ request: HTTPRequest) -> HTTPResponse {
         guard request.method == "POST" else { return .json(405, ["error": "nur POST"]) }
-        guard let message = (try? JSONSerialization.jsonObject(with: request.body)) as? [String: Any],
-              let method = message["method"] as? String else {
+        guard let message = (try? JSONSerialization.jsonObject(with: request.body)) as? [String: Any] else {
             return rpcError(id: NSNull(), code: -32700, "parse error")
+        }
+        guard let method = message["method"] as? String else {
+            return rpcError(id: message["id"] ?? NSNull(), code: -32600, "invalid request")
         }
         guard let id = message["id"] else { return HTTPResponse(status: 202) } // Notification
         let params = message["params"] as? [String: Any] ?? [:]
@@ -47,7 +53,14 @@ public final class MCPHandler {
         case "initialize":
             let sessionID = UUID().uuidString
             let client = (params["clientInfo"] as? [String: Any])?["name"] as? String ?? "mcp"
-            clients.mutate { $0[sessionID] = client }
+            clients.mutate { state in
+                state.byID[sessionID] = client
+                state.order.append(sessionID)
+                if state.order.count > Self.maxSessions {
+                    let oldest = state.order.removeFirst()
+                    state.byID.removeValue(forKey: oldest)
+                }
+            }
             var response = rpcResult(id: id, [
                 "protocolVersion": params["protocolVersion"] as? String ?? "2025-06-18",
                 "capabilities": ["tools": [String: Any]()],
@@ -66,7 +79,7 @@ public final class MCPHandler {
             }
             let args = params["arguments"] as? [String: Any] ?? [:]
             let name = args["name"] as? String ?? ""
-            let client = session.flatMap { s in clients.value[s] } ?? "mcp"
+            let client = session.flatMap { s in clients.value.byID[s] } ?? "mcp"
             let event = AgentEvent(source: "mcp:\(client)", session: session ?? name,
                                    state: args["state"] as? String ?? "",
                                    name: name.isEmpty ? nil : name, project: args["project"] as? String,
