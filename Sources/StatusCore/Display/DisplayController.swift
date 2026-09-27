@@ -8,6 +8,9 @@ public final class DisplayController {
 
     /// Wird auf dem Main-Thread aufgerufen.
     public var onStateChange: ((State) -> Void)?
+    /// Ein Schreibfehler hat die Verbindung getrennt; der Transport soll neu anbinden.
+    /// Wird auf dem Main-Thread aufgerufen, je Fehler genau einmal.
+    public var onWriteFailure: (() -> Void)?
 
     private let queue = DispatchQueue(label: "status-display.akp02")
     private var writer: HIDReportWriter?
@@ -62,6 +65,7 @@ public final class DisplayController {
             for report in reports { try writer.write(report) }
         } catch {
             drop()
+            DispatchQueue.main.async { self.onWriteFailure?() }
         }
     }
 

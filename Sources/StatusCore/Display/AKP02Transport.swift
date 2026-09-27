@@ -52,6 +52,15 @@ public final class AKP02Transport {
         return IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
     }
 
+    /// Nach einem Schreibfehler: das aktuelle Gerät vergessen und, falls noch eines angesteckt ist,
+    /// neu anbinden (`onConnect` feuert erneut). Nur vom Main-Thread aufrufen.
+    public func reconnect() {
+        current = nil
+        guard let devices = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice>,
+              let device = devices.first else { return }
+        attach(device)
+    }
+
     private func attach(_ device: IOHIDDevice) {
         guard current == nil else { return } // dasselbe Gerät meldet sich je Usage
         current = device
