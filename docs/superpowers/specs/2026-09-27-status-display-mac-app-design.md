@@ -98,7 +98,10 @@ ist ohne Gerät und ohne Netz testbar.
   seriell über eine Queue, damit kein Heartbeat mitten in ein Bild fällt.
 - Nach jedem (Re-)Connect: `screenOn`, Helligkeit aus der Konfiguration,
   vollständiges Bild.
-- Protokoll portiert aus `akp02` (Framing, JPEG-Parameter, Ausrichtungsregel).
+- Protokoll portiert aus `akp02` (Befehle, Bild-Header, Aufteilung in
+  1024-Byte-Reports). Die App sendet **nur Vollbilder** (0,10 s pro Bild
+  reichen), daher entfallen Teilbilder, Ausrichtungsregel und Wartezeit
+  zwischen Teilbildern.
   Die portierte Datei bleibt unter MPL-2.0 mit Quellenangabe; der Rest des
   Projekts ist davon nicht betroffen (MPL ist dateibezogen).
 - Aufgeteilt in `AKP02Protocol` (reine Byte-Erzeugung, testbar) und
@@ -149,8 +152,8 @@ Regeln (Code, nicht Agent-Ermessen):
 - *fertig* verschwindet nach 10 min.
 - *läuft* ohne Meldung seit 30 min wird zu *unklar* (grau, „keine Meldung seit
   …"). Nach 4 h ohne Meldung wird der Eintrag entfernt.
-- *wartet* bleibt stehen, bis eine neue Meldung kommt oder Florian ihn in der
-  Menüleiste wegklickt.
+- *wartet* und *Fehler* bleiben stehen, bis eine neue Meldung kommt oder
+  Florian sie in der Menüleiste wegklickt.
 - Nur im Speicher. Nach einem App-Neustart ist die Liste leer und füllt sich
   mit den nächsten Meldungen.
 
@@ -163,7 +166,8 @@ Lokaler HTTP-Server, gebunden **nur an `127.0.0.1`**, Port konfigurierbar
   `{"source","session","state","name","project","detail","url"}`.
 - `POST /v1/status` — manuellen Status setzen.
 - `GET /v1/health` — für Skripte und Tests.
-- `/mcp` — MCP-Server (Streamable HTTP) mit einem Tool
+- `/mcp` — MCP-Server (Streamable HTTP, nur JSON-Antworten, kein SSE; von
+  Hand implementiert: `initialize`, `ping`, `tools/list`, `tools/call`) mit einem Tool
   `report_status(state, name, project?, detail?, url?)` und dem Hinweistext,
   dass Agenten es bei Beginn, beim Warten auf den Menschen und am Ende
   aufrufen sollen. Session-ID aus der MCP-Session.
@@ -177,8 +181,8 @@ Lokaler HTTP-Server, gebunden **nur an `127.0.0.1`**, Port konfigurierbar
 
 **Claude Code** über Hooks in `~/.claude/settings.json`. Die App schreibt die
 Datei nicht selbst; sie zeigt im Einstellungsfenster den fertigen Block zum
-Kopieren und liefert ein kleines Skript `status-hook` (in der `.app`,
-Pfad wird angezeigt), das stdin-JSON der Hooks in ein Ereignis übersetzt:
+Kopieren und nutzt als Befehl die App-Binärdatei mit `hook claude-code`, die das
+stdin-JSON der Hooks in ein Ereignis übersetzt:
 
 | Hook | Zustand |
 |---|---|
@@ -188,13 +192,23 @@ Pfad wird angezeigt), das stdin-JSON der Hooks in ein Ereignis übersetzt:
 | `SessionEnd` | Eintrag entfernen |
 
 `PostToolUse` hält *läuft* frisch und holt einen Eintrag nach einer Freigabe
-aus *wartet* zurück. Das Skript ist fehlertolerant: Läuft die App nicht,
+aus *wartet* zurück. Der Hook-Befehl ist fehlertolerant: Läuft die App nicht,
 endet es still mit Exit 0 und verzögert Claude nie (Timeout 1 s).
 
-**Codex CLI** über `notify` in `~/.codex/config.toml`: meldet das Ende eines
-Turns → *wartet*. Ein *läuft* ist über `notify` allein nicht verfügbar; ob die
-aktuelle Codex-Version mehr Ereignisse liefert, klärt der Implementierungsplan
-am Stand von Codex. Bis dahin erscheint Codex nur, wenn er auf Florian wartet.
+**Codex CLI** über Hooks in `~/.codex/hooks.json` (gleiches Format und
+gleiche stdin-Nutzlast wie Claude Code; je nach Codex-Version per
+`[features] hooks = true` in `config.toml` einzuschalten). Zusätzlich zu den
+Claude-Ereignissen: `PermissionRequest` → wartet.
+
+Beide rufen dasselbe Programm auf: die App-Binärdatei selbst mit dem
+Unterbefehl `hook <quelle>` (z. B. `StatusDisplay hook codex`). So braucht es
+kein Skript, kein `jq` und kein Python auf dem Arbeitgeber-Mac. Der Unterbefehl
+liest Token und Port aus Application Support und gibt nie etwas auf stdout aus
+(Claude würde es sonst als Kontext übernehmen).
+
+Leerlauf-Hinweise von Claude (`Notification` mit `notification_type`
+`idle_prompt`) werden ignoriert: nach `Stop` gilt *fertig*, sonst stünde jede
+offene Session dauerhaft auf *wartet*.
 
 **MCP** für alle lokalen Agenten mit MCP-Unterstützung (Copilot im
 Agent-Modus in VS Code u. a.): Eintrag `http://127.0.0.1:47615/mcp` mit
@@ -244,22 +258,25 @@ deshalb gilt die 30-Minuten-Regel für *unklar* auch hier.
 
 ## Tests
 
-- `AKP02Protocol`: Golden-Tests. Mit der Python-Library werden einmalig
-  Referenzpakete erzeugt (screenOn, Helligkeit, Heartbeat, Vollbild, Teilbild
-  mit Ausrichtung) und als Fixtures eingecheckt; die Swift-Implementierung
-  muss byte-gleich sein.
+- `AKP02Protocol`: Byte-Tests gegen das in `akp02` dokumentierte Protokoll
+  (Befehle, Header, Aufteilung, Commit). Fremder Code wird dafür nicht
+  ausgeführt.
 - `AgentRegistry`: Zustandsübergänge und Zeitregeln mit injizierter Uhr.
 - `IngressServer`: Token-Prüfung, Ereignis-Parsing, MCP-Tool-Aufruf.
 - `PRProvider`: Parsing aufgezeichneter GraphQL-Antworten, Fehlerfälle.
-- `Renderer`: Snapshot-Tests (PNG-Vergleich) für typische Zustände,
-  einschließlich „veraltet" und „+2 weitere".
+- `Renderer`: Pixel-Stichproben (Statusfarbe, roter CI-Rand, Drehung ins
+  Hochformat) und reine Textfunktionen („seit 47 min", „+2 weitere",
+  Kürzung). Dazu der Unterbefehl `preview <datei.png>` für die Sichtprüfung.
+  Keine PNG-Vergleiche, weil Schriftglättung zwischen Macs abweicht.
 - Gerät und Menüleiste: manuelle Checkliste.
 - CI: GitHub Actions auf macOS, ohne Secrets (Konvention aller Repos).
 
 ## Bauen und Verteilen
 
-- Xcode-Projekt im Repo, Build per `xcodebuild` bzw. Skript `scripts/build.sh`,
-  Ergebnis `Status Display.app`, ad-hoc signiert.
+- Swift Package (Bibliothek `StatusCore` mit aller Logik, ausführbares Ziel
+  `StatusDisplay` mit Menüleiste und Unterbefehlen). `scripts/build.sh` baut
+  universal (arm64 + x86_64) und packt `build/StatusDisplay.app` mit
+  `Info.plist` (`LSUIElement`), ad-hoc signiert. Kein Xcode-Projekt im Repo.
 - Auf den Arbeitgeber-Mac per Kopie; erster Start per Rechtsklick → Öffnen.
 - Die bisherige ESP32-Firmware wandert nach `legacy-esp32/`.
 
@@ -309,10 +326,11 @@ freigegeben? Graph-App-Registrierung mit `Presence.ReadWrite` möglich?
 - Synchronisation zwischen den Macs.
 - Frei konfigurierbares Layout.
 
-## Offene Punkte für den Implementierungsplan
+## Geklärte Punkte (27.09.2026)
 
-1. Welche Ereignisse die aktuelle Codex-CLI außer `notify` anbietet.
-2. Welche Swift-Bibliothek den MCP-Server (Streamable HTTP) trägt, oder ob die
-   eine Tool-Schnittstelle direkt implementiert wird.
-3. Ob `IOHIDManager` das Gerät ohne Eingabeüberwachungs-Freigabe öffnen darf
-   (herstellerspezifische Usage Page, kein Tastatur-/Maus-Gerät — erwartet: ja).
+1. Codex hat Hooks im Claude-Format (`~/.codex/hooks.json`); `notify` wird
+   nicht gebraucht.
+2. MCP ohne Bibliothek, von Hand (siehe `IngressServer`).
+3. Eingabeüberwachung: Das Gerät hat eine herstellerspezifische Usage Page;
+   der Spike hat es ohne Freigabe geöffnet. Die App prüft das beim ersten
+   Start, der Plan enthält den Schritt.
