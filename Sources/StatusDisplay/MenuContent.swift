@@ -52,7 +52,7 @@ struct MenuContent: View {
             Text(model.displayState == .connected ? "Display verbunden" : "Display nicht gefunden")
         }
         if case .failed(let message) = model.serverState { Text("Server: \(message)") }
-        SettingsLink { Text("Einstellungen …") }
+        SettingsOpener()
         Button("Beenden") { NSApp.terminate(nil) }
     }
 
