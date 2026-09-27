@@ -88,13 +88,16 @@ final class AppModel: ObservableObject {
     }
 
     func regenerateToken() {
-        server?.stop()
+        // Erst das neue Token erzeugen; der alte Server (der mit dem alten Token noch funktioniert)
+        // wird nur bei Erfolg gestoppt. Sonst würde ein Fehlschlag den Server tot zurücklassen.
         do {
             _ = try support.regenerateToken()
-            startServer()
         } catch {
             serverState = .failed("Token konnte nicht erzeugt werden: \(error.localizedDescription)")
+            return
         }
+        stopServer()
+        startServer()
     }
 
     /// Single-flight: läuft bereits ein Refresh, wird nur vorgemerkt statt eines zweiten,
@@ -162,6 +165,15 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Trennt `onStateChange` der alten Instanz, bevor sie gestoppt wird: sonst kann ihr
+    /// (asynchron nachlaufender) `.stopped`-Callback `serverState` überschreiben, nachdem der
+    /// neue Server längst läuft oder ein Fehler dazu gesetzt wurde.
+    private func stopServer() {
+        server?.onStateChange = nil
+        server?.stop()
+        server = nil
+    }
+
     private func startServer() {
         do {
             token = try support.loadOrCreateToken()
@@ -202,7 +214,7 @@ final class AppModel: ObservableObject {
 
     private func apply(_ old: AppSettings) {
         if old.port != settings.port {
-            server?.stop()
+            stopServer()
             startServer()
         }
         if old.brightness != settings.brightness { display.setBrightness(settings.brightness) }
