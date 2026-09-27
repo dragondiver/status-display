@@ -1,4 +1,5 @@
 import AppKit
+import IOKit
 import StatusCore
 import SwiftUI
 
@@ -12,6 +13,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var displayState: DisplayController.State = .disconnected
     @Published private(set) var serverState: HTTPServer.State = .stopped
     @Published private(set) var token = ""
+    /// Rückgabe von IOHIDManagerOpen, falls der HID-Zugriff scheiterte (sonst nil).
+    @Published private(set) var hidOpenError: IOReturn?
     @Published var settings: AppSettings {
         didSet { if settings != oldValue { settings.save(); apply(oldValue) } }
     }
@@ -27,6 +30,9 @@ final class AppModel: ObservableObject {
     private var renderScheduled = false
     private var prsRefreshRunning = false
     private var prsRefreshPending = false
+    private var reconnectScheduled = false
+    private var lastReconnect: Date?
+    static let reconnectMinInterval: TimeInterval = 5
 
     init() {
         let settings = AppSettings.load()
@@ -40,7 +46,9 @@ final class AppModel: ObservableObject {
         display.onStateChange = { [weak self] state in Task { @MainActor in self?.displayState = state } }
         transport.onConnect = { [weak self] writer in Task { @MainActor in self?.display.attach(writer) } }
         transport.onDisconnect = { [weak self] in Task { @MainActor in self?.display.detach() } }
-        transport.start()
+        display.onWriteFailure = { [weak self] in Task { @MainActor in self?.scheduleReconnect() } }
+        let hidResult = transport.start()
+        if hidResult != kIOReturnSuccess { hidOpenError = hidResult }
         startServer()
 
         timers.append(Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
@@ -54,7 +62,13 @@ final class AppModel: ObservableObject {
             Task { @MainActor in
                 self?.display.reinitialize()
                 self?.scheduleRender()
+                await self?.refreshPRs()
             }
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
+                                               queue: .main) { [weak self] _ in
+            // Synchron: nach dieser Benachrichtigung endet der Prozess, ein Task käme nicht mehr dran.
+            MainActor.assumeIsolated { self?.support.removeEndpoint() }
         }
         refreshLocal()
         Task { await refreshPRs() }
@@ -139,6 +153,21 @@ final class AppModel: ObservableObject {
 
     // MARK: Intern
 
+    /// Nach einem Schreibfehler neu anbinden, aber höchstens alle 5 s: scheitert das wieder
+    /// angebundene Gerät sofort erneut, entsteht so keine enge Schleife.
+    private func scheduleReconnect() {
+        guard !reconnectScheduled else { return }
+        reconnectScheduled = true
+        let wait = lastReconnect.map { max(0, Self.reconnectMinInterval - Date().timeIntervalSince($0)) } ?? 0
+        Task { @MainActor [weak self] in
+            if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+            guard let self else { return }
+            self.reconnectScheduled = false
+            self.lastReconnect = Date()
+            self.transport.reconnect()
+        }
+    }
+
     private func handle(_ event: AgentEvent) {
         try? registry.apply(event)
         refreshLocal()
@@ -173,12 +202,14 @@ final class AppModel: ObservableObject {
         server?.onStateChange = nil
         server?.stop()
         server = nil
+        support.removeEndpoint() // bis der nächste Server `.ready` meldet, gehört der Port nicht mehr uns
     }
 
     private func startServer() {
         do {
             token = try support.loadOrCreateToken()
         } catch {
+            support.removeEndpoint()
             serverState = .failed("Token: \(error.localizedDescription)")
             return
         }
@@ -196,10 +227,12 @@ final class AppModel: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.serverState = state
+                if case .failed = state { self.support.removeEndpoint() }
                 if state == .ready {
                     do {
                         try self.support.writeEndpoint(Endpoint(port: port))
                     } catch {
+                        self.support.removeEndpoint()
                         self.serverState = .failed("endpoint.json konnte nicht geschrieben werden: \(error.localizedDescription)")
                     }
                 }
@@ -209,6 +242,7 @@ final class AppModel: ObservableObject {
             try s.start()
             server = s
         } catch {
+            support.removeEndpoint()
             serverState = .failed(error.localizedDescription)
         }
     }

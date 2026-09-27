@@ -39,13 +39,18 @@ struct MenuContent: View {
                     prMenu("\(host): \(snap.toReview.count) zu reviewen", snap.toReview)
                     prMenu("\(host): \(snap.mine.count) eigene (\(snap.ciFailingCount) CI rot)", snap.mine)
                 }
+                if let warning = model.prs.snapshots[host]?.warning { Text("\(host): Hinweis: \(warning)") }
                 if let error = model.prs.errors[host] { Text("\(host): \(error.message)") }
             }
             Button("Aktualisieren") { Task { await model.refreshPRs() } }
         }
 
         Divider()
-        Text(model.displayState == .connected ? "Display verbunden" : "Display nicht gefunden")
+        if let code = model.hidOpenError {
+            Text("HID-Zugriff fehlgeschlagen (IOReturn \(String(format: "0x%08X", UInt32(bitPattern: code))))")
+        } else {
+            Text(model.displayState == .connected ? "Display verbunden" : "Display nicht gefunden")
+        }
         if case .failed(let message) = model.serverState { Text("Server: \(message)") }
         SettingsLink { Text("Einstellungen …") }
         Button("Beenden") { NSApp.terminate(nil) }

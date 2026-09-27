@@ -87,7 +87,7 @@ struct SettingsView: View {
                     TextField("#RRGGBB", text: $preset.colorHex).frame(width: 100)
                     Circle().fill(Color(cgColor: preset.color.cgColor)).frame(width: 16, height: 16)
                     Button("Löschen") { presets.removeAll { $0.id == preset.id } }
-                        .disabled(presets.count <= 1)
+                        .disabled(presets.count <= 1 || preset.id == StatusPreset.availableID)
                 }
             }
             HStack {

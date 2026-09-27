@@ -36,7 +36,7 @@ Alle Anfragen gehen an `http://127.0.0.1:47615` mit
 | POST | `/v1/status` | `{"preset":"deep-focus","minutes":60}`, minutes optional, gültig ist (0, 1440] |
 | POST | `/mcp` | MCP (Streamable HTTP), Tool `report_status` |
 
-Port (Einstellungen → Allgemein) ist frei wählbar zwischen 1024 und 65535; ein GitHub-Host
+Port (Einstellungen → Agenten) ist frei wählbar zwischen 1024 und 65535; ein GitHub-Host
 wird beim Eintragen normalisiert (Schema `http(s)://` und abschließender `/` entfernt,
 kleingeschrieben).
 
