@@ -223,9 +223,12 @@ final class AppModel: ObservableObject {
                                    })
         let port = settings.port
         let s = HTTPServer(port: port, handler: router.handle)
-        s.onStateChange = { [weak self] state in
+        s.onStateChange = { [weak self, weak s] state in
             Task { @MainActor in
-                guard let self else { return }
+                // War der Task schon eingereiht, als `stopServer()` diesen Server ersetzt hat,
+                // meldet er sich hier trotzdem noch: `self.server` zeigt dann nicht mehr auf `s`,
+                // und die veraltete Meldung darf `serverState`/`endpoint.json` nicht mehr anfassen.
+                guard let self, let s, self.server === s else { return }
                 self.serverState = state
                 if case .failed = state { self.support.removeEndpoint() }
                 if state == .ready {

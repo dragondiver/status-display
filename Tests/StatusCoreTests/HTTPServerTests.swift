@@ -36,6 +36,42 @@ final class HTTPServerTests: XCTestCase {
         conn.cancel()
     }
 
+    /// `onStateChange` wird vom MainActor gesetzt/gelöscht und auf der Server-Queue gelesen und
+    /// aufgerufen – ohne Synchronisierung ein Data Race. Dieser Test greift aus zwei Threads
+    /// gleichzeitig zu (darf nicht crashen) und prüft danach, dass nach dem Löschen kein
+    /// veralteter `.stopped`-Callback mehr ankommt.
+    func testOnStateChangeIsThreadSafeAndSuppressedAfterClearing() throws {
+        let port = UInt16.random(in: 50_000...59_000)
+        let server = HTTPServer(port: port) { req in .json(200, ["path": req.path]) }
+        let ready = expectation(description: "bereit")
+        server.onStateChange = { if $0 == .ready { ready.fulfill() } }
+        try server.start()
+        wait(for: [ready], timeout: 3)
+
+        // Gleichzeitiges Lesen und Schreiben aus zwei Threads darf nicht crashen.
+        let iterations = 500
+        let readerDone = expectation(description: "Leser fertig")
+        let writerDone = expectation(description: "Schreiber fertig")
+        DispatchQueue.global().async {
+            for _ in 0..<iterations { _ = server.onStateChange }
+            readerDone.fulfill()
+        }
+        DispatchQueue.global().async {
+            for i in 0..<iterations {
+                server.onStateChange = (i % 2 == 0) ? { _ in } : nil
+            }
+            writerDone.fulfill()
+        }
+        wait(for: [readerDone, writerDone], timeout: 10)
+
+        // Danach explizit löschen und stoppen: der `.stopped`-Callback darf nicht mehr ankommen.
+        var stoppedObserved = false
+        server.onStateChange = { if $0 == .stopped { stoppedObserved = true } }
+        server.onStateChange = nil
+        server.stop()
+        XCTAssertFalse(stoppedObserved, "nach onStateChange = nil darf kein Callback mehr beobachtet werden")
+    }
+
     func testServesOnLoopback() throws {
         let port = UInt16.random(in: 50_000...59_000)
         let server = HTTPServer(port: port) { req in .json(200, ["path": req.path]) }
