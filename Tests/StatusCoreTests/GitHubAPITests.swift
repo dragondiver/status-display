@@ -79,4 +79,36 @@ final class GitHubAPITests: XCTestCase {
         XCTAssertEqual(GitHubError.http(401).message, "Token abgelehnt (HTTP 401) – gh auth refresh ausführen")
         XCTAssertEqual(GitHubError.http(502).message, "HTTP 502")
     }
+
+    // MARK: reviewDecision (Issue #21)
+
+    func testParsesAllThreeReviewDecisionValuesPlusNullAndUnknown() throws {
+        let json = #"""
+        {"data":{
+          "review":{"nodes":[
+            {"number":1,"title":"a","url":"https://github.com/a/b/pull/1","repository":{"nameWithOwner":"a/b"},"reviewDecision":"APPROVED","commits":{"nodes":[]}},
+            {"number":2,"title":"b","url":"https://github.com/a/b/pull/2","repository":{"nameWithOwner":"a/b"},"reviewDecision":"CHANGES_REQUESTED","commits":{"nodes":[]}},
+            {"number":3,"title":"c","url":"https://github.com/a/b/pull/3","repository":{"nameWithOwner":"a/b"},"reviewDecision":"REVIEW_REQUIRED","commits":{"nodes":[]}},
+            {"number":4,"title":"d","url":"https://github.com/a/b/pull/4","repository":{"nameWithOwner":"a/b"},"reviewDecision":null,"commits":{"nodes":[]}},
+            {"number":5,"title":"e","url":"https://github.com/a/b/pull/5","repository":{"nameWithOwner":"a/b"},"reviewDecision":"SOME_FUTURE_VALUE","commits":{"nodes":[]}},
+            {"number":6,"title":"f","url":"https://github.com/a/b/pull/6","repository":{"nameWithOwner":"a/b"},"commits":{"nodes":[]}}
+          ]},
+          "mine":{"nodes":[]}
+        }}
+        """#
+        let s = try GitHubAPI.parse(Data(json.utf8), host: "github.com", at: now)
+        let byNumber = Dictionary(uniqueKeysWithValues: s.toReview.map { ($0.number, $0) })
+        XCTAssertEqual(byNumber[1]?.reviewDecision, .approved)
+        XCTAssertEqual(byNumber[2]?.reviewDecision, .changesRequested)
+        XCTAssertEqual(byNumber[3]?.reviewDecision, .reviewRequired)
+        XCTAssertNil(byNumber[4]?.reviewDecision, "explizites null")
+        XCTAssertNil(byNumber[5]?.reviewDecision, "unbekannter Enum-Wert wird wie null behandelt")
+        XCTAssertNil(byNumber[6]?.reviewDecision, "Feld fehlt ganz")
+        XCTAssertFalse(byNumber[1]!.needsMyReview)
+        XCTAssertTrue(byNumber[2]!.needsMyReview)
+        XCTAssertTrue(byNumber[3]!.needsMyReview)
+        XCTAssertTrue(byNumber[4]!.needsMyReview)
+        XCTAssertTrue(byNumber[5]!.needsMyReview)
+        XCTAssertTrue(byNumber[6]!.needsMyReview)
+    }
 }

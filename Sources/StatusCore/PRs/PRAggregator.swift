@@ -38,6 +38,16 @@ public struct PRAggregator {
     /// `PRZone.hiddenReviews` sammelt die Review-Requests aus ausgeblendeten Repos (Entscheidung
     /// Florian, 28.09.2026, status-display#19); eigene offene PRs aus ausgeblendeten Repos tauchen
     /// nirgends mehr auf.
+    ///
+    /// Review-Requests mit `reviewDecision == APPROVED` zählen nirgends mehr als „zu reviewen“
+    /// (weder in `rows[].toReview` noch in `hiddenReviews`) – Entscheidung Florian, 28.09.2026,
+    /// status-display#21. Sie tauchen stattdessen als `PRRow.approvedReviews`
+    /// pro (nicht ausgeblendetem) Repo auf, damit das Menü sie in einem eigenen Abschnitt „schon
+    /// freigegeben“ zeigen kann; ein Repo ganz ohne offene eigene PRs, dessen einzige
+    /// Review-Requests bereits freigegeben sind, bekommt dadurch keine `Acc`-Zeile und verschwindet
+    /// aus der Tabelle (außer es ist angeheftet). In ausgeblendeten Repos werden freigegebene
+    /// Review-Requests nicht gesondert aufbewahrt – wie eigene offene PRs verschwinden sie dort
+    /// ganz.
     public func zone(now: Date, hosts: [String], pinned: [String] = [], hidden: [String] = [],
                      shown: [String] = [], hostDefaults: [String: RepoDefault] = [:]) -> PRZone {
         let all = Array(snapshots.values)
@@ -48,12 +58,17 @@ public struct PRAggregator {
         var acc: [String: Acc] = [:]
         var totalCIFailing = 0
         var reviewsByKey: [String: [PullRequest]] = [:]
+        var approvedByKey: [String: [PullRequest]] = [:]
 
         for snapshot in all {
             for pr in snapshot.toReview {
                 let key = repoKey(host: snapshot.host, repository: pr.repository)
-                acc[key, default: Acc(repository: pr.repository)].toReview += 1
-                reviewsByKey[key, default: []].append(pr)
+                if pr.needsMyReview {
+                    acc[key, default: Acc(repository: pr.repository)].toReview += 1
+                    reviewsByKey[key, default: []].append(pr)
+                } else {
+                    approvedByKey[key, default: []].append(pr)
+                }
             }
             for pr in snapshot.mine {
                 let key = repoKey(host: snapshot.host, repository: pr.repository)
@@ -86,12 +101,14 @@ public struct PRAggregator {
         for key in effectivelyHidden {
             hiddenReviews += reviewsByKey[key] ?? []
             acc.removeValue(forKey: key)
+            approvedByKey.removeValue(forKey: key)
         }
         hiddenReviews.sort { $0.repository != $1.repository ? $0.repository < $1.repository : $0.number < $1.number }
 
         let rows = acc.map { key, a in
-            PRRow(repoKey: key, repository: Self.shortName(a.repository),
-                  toReview: a.toReview, mine: a.mine, ciFailing: a.ciFailing)
+            let approved = (approvedByKey[key] ?? []).sorted { $0.number < $1.number }
+            return PRRow(repoKey: key, repository: Self.shortName(a.repository),
+                        toReview: a.toReview, mine: a.mine, ciFailing: a.ciFailing, approvedReviews: approved)
         }
         let sorted = rows.sorted { lhs, rhs in
             let l = group(lhs, pinned: pinnedSet), r = group(rhs, pinned: pinnedSet)

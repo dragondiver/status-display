@@ -66,13 +66,30 @@ struct MenuContent: View {
     private func repoMenu(_ row: PRRow) -> some View {
         Menu("\(row.ciFailing ? "● " : "")\(row.repository) – \(row.toReview) zu reviewen · \(row.mine) offen") {
             let pulls = pullRequests(forRepoKey: row.repoKey)
-            if pulls.isEmpty { Text("keine") }
+            if pulls.isEmpty && row.approvedReviews.isEmpty { Text("keine") }
             ForEach(pulls) { pr in
                 Button((pr.ciFailing ? "● " : "") + (pr.isDraft ? "Draft · " : "") + "#\(pr.number) \(pr.title)") {
                     NSWorkspace.shared.open(pr.url)
                 }
             }
+            if !row.approvedReviews.isEmpty {
+                approvedReviewsMenu(row.approvedReviews)
+            }
         }
+    }
+
+    /// Review-Requests, die schon `reviewDecision == APPROVED` sind: zählen nicht mehr als
+    /// „zu reviewen“, bleiben aber sichtbar (Entscheidung Florian, 28.09.2026, status-display#21).
+    @ViewBuilder
+    private func approvedReviewsMenu(_ reviews: [PullRequest]) -> some View {
+        Menu("Schon freigegeben · \(reviews.count)") {
+            ForEach(reviews) { pr in
+                Button("#\(pr.number) \(pr.title)") {
+                    NSWorkspace.shared.open(pr.url)
+                }
+            }
+        }
+        .foregroundStyle(.secondary)
     }
 
     /// Unauffällige, aufklappbare Hinweiszeile für Review-Requests in ausgeblendeten Repos
@@ -90,12 +107,16 @@ struct MenuContent: View {
         .foregroundStyle(.secondary)
     }
 
-    /// Alle eigenen PRs und Review-Requests für ein Repo (`host/owner/name`), über alle Hosts,
-    /// ohne Duplikate (falls dieselbe PR in beiden Suchen auftaucht).
+    /// Alle eigenen PRs und noch offenen Review-Requests (kein `APPROVED`) für ein Repo
+    /// (`host/owner/name`), über alle Hosts, ohne Duplikate (falls dieselbe PR in beiden Suchen
+    /// auftaucht). Freigegebene Review-Requests fehlen hier bewusst – die liefert `PRRow.approvedReviews`.
     private func pullRequests(forRepoKey repoKey: String) -> [PullRequest] {
         var seen = Set<String>()
         return model.prs.snapshots.values
-            .flatMap { snap in (snap.toReview + snap.mine).filter { "\(snap.host)/\($0.repository)" == repoKey } }
+            .flatMap { snap in
+                (snap.toReview.filter(\.needsMyReview) + snap.mine)
+                    .filter { "\(snap.host)/\($0.repository)" == repoKey }
+            }
             .filter { seen.insert($0.id).inserted }
     }
 }

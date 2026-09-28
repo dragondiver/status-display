@@ -11,11 +11,18 @@ public struct PRRow: Equatable, Identifiable {
     public let mine: Int
     /// Roter Punkt: ein eigener Nicht-Draft-PR in diesem Repo hat rote CI.
     public let ciFailing: Bool
+    /// Review-Requests in diesem Repo mit `reviewDecision == APPROVED` – zählen nicht in
+    /// `toReview` (Entscheidung Florian, 28.09.2026, status-display#21), bleiben aber im Menü in
+    /// einem eigenen Abschnitt „schon freigegeben“ sichtbar. Nicht Teil von `Equatable`-relevanten
+    /// Zähl-/Sortierlogik der Tabelle – nur fürs Menü gedacht.
+    public let approvedReviews: [PullRequest]
     public var id: String { repoKey }
 
-    public init(repoKey: String, repository: String, toReview: Int, mine: Int, ciFailing: Bool) {
+    public init(repoKey: String, repository: String, toReview: Int, mine: Int, ciFailing: Bool,
+               approvedReviews: [PullRequest] = []) {
         self.repoKey = repoKey; self.repository = repository
         self.toReview = toReview; self.mine = mine; self.ciFailing = ciFailing
+        self.approvedReviews = approvedReviews
     }
 }
 

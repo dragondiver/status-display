@@ -1,5 +1,13 @@
 import Foundation
 
+/// GitHubs Gesamt-Freigabestatus eines PR (`reviewDecision` im GraphQL-Schema). Unbekannte Werte
+/// werden beim Parsen wie `null` behandelt (siehe `GitHubAPI`).
+public enum ReviewDecision: String, Equatable {
+    case approved = "APPROVED"
+    case changesRequested = "CHANGES_REQUESTED"
+    case reviewRequired = "REVIEW_REQUIRED"
+}
+
 public struct PullRequest: Equatable, Identifiable {
     public let number: Int
     public let title: String
@@ -7,11 +15,21 @@ public struct PullRequest: Equatable, Identifiable {
     public let url: URL
     public let ciFailing: Bool
     public let isDraft: Bool
+    /// `nil`, solange GitHub (noch) keine Entscheidung kennt oder ein unbekannter Wert ankam.
+    public let reviewDecision: ReviewDecision?
     public var id: String { url.absoluteString }
 
-    public init(number: Int, title: String, repository: String, url: URL, ciFailing: Bool, isDraft: Bool = false) {
+    /// Zählt dieser Review-Request noch als „zu reviewen“? Nur `APPROVED` zählt nicht mehr –
+    /// `CHANGES_REQUESTED`, `REVIEW_REQUIRED` und `nil` (unbekannt/offen) zählen weiter
+    /// (Entscheidung Florian, 28.09.2026, status-display#21: bei GitHub Enterprise bleibt eine
+    /// persönliche Review-Anfrage stehen, auch wenn der PR durch andere schon freigegeben ist).
+    public var needsMyReview: Bool { reviewDecision != .approved }
+
+    public init(number: Int, title: String, repository: String, url: URL, ciFailing: Bool, isDraft: Bool = false,
+               reviewDecision: ReviewDecision? = nil) {
         self.number = number; self.title = title; self.repository = repository; self.url = url; self.ciFailing = ciFailing
         self.isDraft = isDraft
+        self.reviewDecision = reviewDecision
     }
 }
 

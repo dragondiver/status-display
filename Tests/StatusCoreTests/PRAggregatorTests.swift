@@ -4,9 +4,10 @@ import XCTest
 final class PRAggregatorTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_790_000_000)
 
-    private func pr(_ n: Int, repository: String = "a/b", failing: Bool = false, draft: Bool = false) -> PullRequest {
+    private func pr(_ n: Int, repository: String = "a/b", failing: Bool = false, draft: Bool = false,
+                    reviewDecision: ReviewDecision? = nil) -> PullRequest {
         PullRequest(number: n, title: "t", repository: repository, url: URL(string: "https://x/\(n)")!,
-                   ciFailing: failing, isDraft: draft)
+                   ciFailing: failing, isDraft: draft, reviewDecision: reviewDecision)
     }
 
     func testEmptyIsUnknownAndStale() {
@@ -180,5 +181,53 @@ final class PRAggregatorTests: XCTestCase {
         let z = a.zone(now: t0, hosts: ["ghe.firma.de"], pinned: ["ghe.firma.de/f/heim-agent"])
         XCTAssertEqual(z.rows.map(\.repoKey), ["ghe.firma.de/f/heim-agent"])
         XCTAssertTrue(z.hiddenReviews.isEmpty)
+    }
+
+    // MARK: Freigegebene Review-Requests zählen nicht mit (Issue #21)
+
+    /// `APPROVED` zählt nicht in `toReview`, `CHANGES_REQUESTED`/`REVIEW_REQUIRED`/`nil` weiterhin.
+    func testApprovedReviewDoesNotCountButOthersDo() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "github.com",
+                            toReview: [pr(1, reviewDecision: .approved), pr(2, reviewDecision: .changesRequested),
+                                      pr(3, reviewDecision: .reviewRequired), pr(4, reviewDecision: nil)],
+                            mine: [], fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["github.com"])
+        XCTAssertEqual(z.rows.map(\.toReview), [3])
+        XCTAssertEqual(z.rows.first?.approvedReviews.map(\.number), [1])
+    }
+
+    /// Ein normales (nicht angeheftetes) Repo ohne eigene offene PRs, dessen einzige
+    /// Review-Requests bereits freigegeben sind, taucht nicht mehr in der Tabelle auf.
+    func testRepoWithOnlyApprovedReviewsAndNoOwnPRsDisappearsFromTable() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "github.com", toReview: [pr(1, repository: "f/rundfunk", reviewDecision: .approved)],
+                            mine: [], fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["github.com"])
+        XCTAssertTrue(z.rows.isEmpty)
+    }
+
+    /// Ein angeheftetes Repo bleibt auch dann sichtbar (mit 0 zu reviewen), wenn seine einzigen
+    /// Review-Requests bereits freigegeben sind.
+    func testPinnedRepoWithOnlyApprovedReviewsStillAppearsWithZero() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "github.com", toReview: [pr(1, repository: "f/rundfunk", reviewDecision: .approved)],
+                            mine: [], fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["github.com"], pinned: ["github.com/f/rundfunk"])
+        XCTAssertEqual(z.rows, [PRRow(repoKey: "github.com/f/rundfunk", repository: "rundfunk",
+                                      toReview: 0, mine: 0, ciFailing: false,
+                                      approvedReviews: [pr(1, repository: "f/rundfunk", reviewDecision: .approved)])])
+    }
+
+    /// Die Hinweiszeile „Ausgeblendet · N zu reviewen“ zählt freigegebene Review-Requests aus
+    /// ausgeblendeten Repos nicht mit.
+    func testHiddenReviewsExcludesApprovedReviews() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "github.com",
+                            toReview: [pr(1, repository: "f/rundfunk", reviewDecision: .approved),
+                                      pr(2, repository: "f/rundfunk", reviewDecision: .changesRequested)],
+                            mine: [], fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["github.com"], hidden: ["github.com/f/rundfunk"])
+        XCTAssertEqual(z.hiddenReviews.map(\.number), [2])
     }
 }

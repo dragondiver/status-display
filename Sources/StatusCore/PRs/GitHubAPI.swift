@@ -13,7 +13,7 @@ public enum GitHubAPI {
       mine: search(query: "is:open is:pr archived:false author:@me", type: ISSUE, first: 100) { nodes { ...pr } }
     }
     fragment pr on PullRequest {
-      number title url repository { nameWithOwner } isDraft
+      number title url repository { nameWithOwner } isDraft reviewDecision
       commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
     }
     """
@@ -35,9 +35,11 @@ public enum GitHubAPI {
         guard let n = node, let number = n.number, let title = n.title,
               let urlString = n.url, let url = URL(string: urlString) else { return nil }
         let state = n.commits?.nodes.last??.commit.statusCheckRollup?.state
+        // Unbekannte/neue Enum-Werte decodiert Node.reviewDecision schon als nil (RawRepresentable-
+        // Init schlägt fehl) – hier bleibt nur das Zusammenführen mit "Feld fehlt ganz".
         return PullRequest(number: number, title: title, repository: n.repository?.nameWithOwner ?? "",
                            url: url, ciFailing: state == "FAILURE" || state == "ERROR",
-                           isDraft: n.isDraft ?? false)
+                           isDraft: n.isDraft ?? false, reviewDecision: n.reviewDecision?.value)
     }
 
     private struct Response: Decodable { let data: DataField?; let errors: [GQLError]? }
@@ -47,6 +49,16 @@ public enum GitHubAPI {
     private struct Node: Decodable {
         let number: Int?; let title: String?; let url: String?
         let repository: Repo?; let commits: Commits?; let isDraft: Bool?
+        let reviewDecision: LenientReviewDecision?
+    }
+    /// Decodiert `reviewDecision` verlustfrei-tolerant: ein unbekannter String (künftiger
+    /// GraphQL-Enum-Wert) wird zu `value == nil` statt den ganzen PR-Knoten zu verwerfen.
+    private struct LenientReviewDecision: Decodable {
+        let value: ReviewDecision?
+        init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            value = ReviewDecision(rawValue: raw)
+        }
     }
     private struct Repo: Decodable { let nameWithOwner: String }
     private struct Commits: Decodable { let nodes: [CommitNode?] }
