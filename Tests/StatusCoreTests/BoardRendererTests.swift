@@ -4,9 +4,10 @@ import XCTest
 final class BoardRendererTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_790_000_000)
 
-    private func row(_ repository: String, toReview: Int = 0, mine: Int = 0, ciFailing: Bool = false) -> PRRow {
+    private func row(_ repository: String, toReview: Int = 0, mine: Int = 0, ciFailing: Bool = false,
+                     hasExtraReview: Bool = false) -> PRRow {
         PRRow(repoKey: "github.com/f/\(repository)", repository: repository, toReview: toReview, mine: mine,
-             ciFailing: ciFailing)
+             ciFailing: ciFailing, hasExtraReview: hasExtraReview)
     }
 
     private func state(prs: PRZone = .unknown, agents: [AgentActivity] = []) -> BoardState {
@@ -112,5 +113,52 @@ final class BoardRendererTests: XCTestCase {
             }
         }
         XCTAssertTrue(sawWhiteOrGrey, "Fragezeichen wird gezeichnet, wenn noch nie erfolgreich geladen wurde")
+    }
+
+    // MARK: Extra-Anfrage färbt die Review-Zahl orange (Issue #21, Verfeinerung 28.09.2026)
+
+    /// Die Review-Zahl (Spalte bei x0+390=1660, erste Zeile Baseline 165) ist orange, wenn
+    /// `PRRow.hasExtraReview` gesetzt ist, sonst weiß.
+    func testExtraReviewMakesReviewNumberOrange() {
+        let extra = PRZone(rows: [row("telefon-ai", toReview: 1, hasExtraReview: true)], ciFailingCount: 0,
+                           lastSuccess: t0, isStale: false)
+        let normal = PRZone(rows: [row("telefon-ai", toReview: 1, hasExtraReview: false)], ciFailingCount: 0,
+                            lastSuccess: t0, isStale: false)
+        let extraImg = BoardRenderer.render(state(prs: extra))
+        let normalImg = BoardRenderer.render(state(prs: normal))
+        var extraSawAmber = false
+        var normalSawAmber = false
+        for x in stride(from: 1660, to: 1720, by: 2) {
+            for y in 140...185 {
+                if isAmber(pixel(extraImg, x, y)) { extraSawAmber = true }
+                if isAmber(pixel(normalImg, x, y)) { normalSawAmber = true }
+            }
+        }
+        XCTAssertTrue(extraSawAmber, "Review-Zahl ist orange bei einer Extra-Anfrage")
+        XCTAssertFalse(normalSawAmber, "ohne Extra-Anfrage bleibt die Review-Zahl nicht orange")
+    }
+
+    /// Die Hinweiszeile „Ausgeblendet · N zu reviewen“ färbt nur die Zahl orange, wenn darunter
+    /// eine Extra-Anfrage ist – der Rest der Zeile bleibt grau.
+    func testHiddenHintNumberIsOrangeWhenExtraRequestHidden() {
+        let extraHidden = PullRequest(number: 9, title: "t", repository: "f/x", url: URL(string: "https://x/9")!,
+                                      ciFailing: false, hasCodeOwnerRequestForMe: false, hasExtraRequestForMe: true)
+        let codeOwnerHidden = PullRequest(number: 9, title: "t", repository: "f/x", url: URL(string: "https://x/9")!,
+                                          ciFailing: false, hasCodeOwnerRequestForMe: true, hasExtraRequestForMe: false)
+        let withExtra = PRZone(rows: [], ciFailingCount: 0, lastSuccess: t0, isStale: false, hiddenReviews: [extraHidden])
+        let withoutExtra = PRZone(rows: [], ciFailingCount: 0, lastSuccess: t0, isStale: false,
+                                  hiddenReviews: [codeOwnerHidden])
+        let withExtraImg = BoardRenderer.render(state(prs: withExtra))
+        let withoutExtraImg = BoardRenderer.render(state(prs: withoutExtra))
+        var withExtraSawAmber = false
+        var withoutExtraSawAmber = false
+        for x in stride(from: 1320, to: 1900, by: 2) {
+            for y in 140...200 {
+                if isAmber(pixel(withExtraImg, x, y)) { withExtraSawAmber = true }
+                if isAmber(pixel(withoutExtraImg, x, y)) { withoutExtraSawAmber = true }
+            }
+        }
+        XCTAssertTrue(withExtraSawAmber, "die Zahl in der Hinweiszeile ist orange, wenn eine Extra-Anfrage darunter ist")
+        XCTAssertFalse(withoutExtraSawAmber, "ohne Extra-Anfrage bleibt die Hinweiszeile grau")
     }
 }

@@ -111,7 +111,10 @@ public enum BoardRenderer {
             }
             text(ctx, BoardText.truncate(row.repository, max: 16), x: x0 + prRepoColumn, baseline: baseline,
                  size: 38, color: c)
-            text(ctx, "\(row.toReview)", x: x0 + prToReviewColumn, baseline: baseline, size: 38, bold: true, color: c)
+            // Extra-Anfrage an mich in diesem Repo: Review-Zahl orange statt weiß/grau (Entscheidung
+            // Florian, 28.09.2026, status-display#21).
+            text(ctx, "\(row.toReview)", x: x0 + prToReviewColumn, baseline: baseline, size: 38, bold: true,
+                 color: row.hasExtraReview ? amber : c)
             text(ctx, "\(row.mine)", x: x0 + prMineColumn, baseline: baseline, size: 38, bold: true, color: c)
             baseline += 55
         }
@@ -122,8 +125,32 @@ public enum BoardRenderer {
         // Immer als letzte Zeile, nie durch „+N weitere“ verdeckt oder abgeschnitten
         // (`BoardText.visiblePRRows` reserviert dafür einen eigenen Platz).
         if let hiddenHint {
-            text(ctx, hiddenHint, x: x0 + prRepoColumn, baseline: baseline, size: 32, color: grey)
+            drawHiddenHint(ctx, hiddenHint, hiddenCount: z.hiddenReviews.count,
+                          hasExtra: z.hiddenReviews.contains { $0.hasExtraRequestForMe },
+                          x: x0 + prRepoColumn, baseline: baseline)
         }
+    }
+
+    /// Zeichnet die Hinweiszeile „Ausgeblendet · N zu reviewen“; ist unter den ausgeblendeten
+    /// Review-Requests mindestens eine Extra-Anfrage, wird nur die Zahl N orange gefärbt
+    /// (Entscheidung Florian, 28.09.2026, status-display#21) – der Rest bleibt grau.
+    private static func drawHiddenHint(_ ctx: CGContext, _ hint: String, hiddenCount: Int, hasExtra: Bool,
+                                       x: CGFloat, baseline: CGFloat) {
+        guard hasExtra else {
+            text(ctx, hint, x: x, baseline: baseline, size: 32, color: grey)
+            return
+        }
+        let numberString = "\(hiddenCount)"
+        guard let range = hint.range(of: numberString) else {
+            text(ctx, hint, x: x, baseline: baseline, size: 32, color: grey)
+            return
+        }
+        let prefix = String(hint[hint.startIndex..<range.lowerBound])
+        let suffix = String(hint[range.upperBound...])
+        var tx = x
+        tx += text(ctx, prefix, x: tx, baseline: baseline, size: 32, color: grey)
+        tx += text(ctx, numberString, x: tx, baseline: baseline, size: 32, color: amber)
+        text(ctx, suffix, x: tx, baseline: baseline, size: 32, color: grey)
     }
 
     // MARK: Hilfen
@@ -143,8 +170,12 @@ public enum BoardRenderer {
         ctx.fill(rect)
     }
 
+    /// Zeichnet `string` und liefert seine gezeichnete Breite zurück, damit Aufrufer mehrere
+    /// Textstücke mit unterschiedlicher Farbe nahtlos aneinanderreihen können (z. B. die
+    /// Hinweiszeile mit orange gefärbter Zahl).
+    @discardableResult
     private static func text(_ ctx: CGContext, _ string: String, x: CGFloat, baseline: CGFloat,
-                             size: CGFloat, bold: Bool = false, color: RGBColor) {
+                             size: CGFloat, bold: Bool = false, color: RGBColor) -> CGFloat {
         let font = CTFontCreateUIFontForLanguage(bold ? .emphasizedSystem : .system, size, nil)!
         let attributes: [NSAttributedString.Key: Any] = [
             NSAttributedString.Key(kCTFontAttributeName as String): font,
@@ -156,5 +187,6 @@ public enum BoardRenderer {
         ctx.textPosition = CGPoint(x: x, y: baseline)
         CTLineDraw(line, ctx)
         ctx.restoreGState()
+        return CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
     }
 }

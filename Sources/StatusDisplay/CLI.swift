@@ -51,8 +51,11 @@ extension CLI {
                           isStale: true),
         ]
         let rows = [
+            // hasExtraReview: true zeigt die orange Review-Zahl – eine Extra-Anfrage an mich
+            // persönlich, die zählt, auch wenn eine Code-Owner-Anfrage im selben Repo schon
+            // erledigt wäre (Issue #21, Verfeinerung 28.09.2026).
             PRRow(repoKey: "github.com/florianhuber/telefon-ai", repository: "telefon-ai",
-                  toReview: 2, mine: 1, ciFailing: true),
+                  toReview: 2, mine: 1, ciFailing: true, hasExtraReview: true),
             PRRow(repoKey: "github.com/florianhuber/rundfunk", repository: "rundfunk",
                   toReview: 1, mine: 0, ciFailing: false),
             PRRow(repoKey: "github.com/florianhuber/heim-agent", repository: "heim-agent",
@@ -67,14 +70,16 @@ extension CLI {
                   toReview: 0, mine: 1, ciFailing: false),
         ]
         // Beispiel für die Hinweiszeile „Ausgeblendet · N zu reviewen“ (Issue #19): Review-Requests
-        // aus einem ausgeblendeten Repo, z. B. per Host-Standard auf einem GHE-Host.
+        // aus einem ausgeblendeten Repo, z. B. per Host-Standard auf einem GHE-Host. #8 hat eine
+        // Extra-Anfrage (hasExtraRequestForMe) – deshalb erscheint die Zahl in der Hinweiszeile
+        // orange (Issue #21, Verfeinerung 28.09.2026).
         let hiddenReviews = [
             PullRequest(number: 12, title: "Migration abschließen", repository: "florianhuber/internal-tools",
                         url: URL(string: "https://ghe.firma.de/florianhuber/internal-tools/pull/12")!,
-                        ciFailing: false),
+                        ciFailing: false, hasCodeOwnerRequestForMe: true),
             PullRequest(number: 8, title: "Log-Rotation fixen", repository: "florianhuber/internal-tools",
                         url: URL(string: "https://ghe.firma.de/florianhuber/internal-tools/pull/8")!,
-                        ciFailing: false),
+                        ciFailing: false, hasExtraRequestForMe: true),
         ]
         let state = BoardState(statusName: "Deep Focus", statusColor: RGBColor(hex: "#B3263E")!,
                                statusSince: now.addingTimeInterval(-47 * 60), agents: agents,

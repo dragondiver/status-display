@@ -79,4 +79,114 @@ final class GitHubAPITests: XCTestCase {
         XCTAssertEqual(GitHubError.http(401).message, "Token abgelehnt (HTTP 401) – gh auth refresh ausführen")
         XCTAssertEqual(GitHubError.http(502).message, "HTTP 502")
     }
+
+    // MARK: reviewDecision (Issue #21)
+
+    func testParsesAllThreeReviewDecisionValuesPlusNullAndUnknown() throws {
+        let json = #"""
+        {"data":{
+          "review":{"nodes":[
+            {"number":1,"title":"a","url":"https://github.com/a/b/pull/1","repository":{"nameWithOwner":"a/b"},"reviewDecision":"APPROVED","commits":{"nodes":[]}},
+            {"number":2,"title":"b","url":"https://github.com/a/b/pull/2","repository":{"nameWithOwner":"a/b"},"reviewDecision":"CHANGES_REQUESTED","commits":{"nodes":[]}},
+            {"number":3,"title":"c","url":"https://github.com/a/b/pull/3","repository":{"nameWithOwner":"a/b"},"reviewDecision":"REVIEW_REQUIRED","commits":{"nodes":[]}},
+            {"number":4,"title":"d","url":"https://github.com/a/b/pull/4","repository":{"nameWithOwner":"a/b"},"reviewDecision":null,"commits":{"nodes":[]}},
+            {"number":5,"title":"e","url":"https://github.com/a/b/pull/5","repository":{"nameWithOwner":"a/b"},"reviewDecision":"SOME_FUTURE_VALUE","commits":{"nodes":[]}},
+            {"number":6,"title":"f","url":"https://github.com/a/b/pull/6","repository":{"nameWithOwner":"a/b"},"commits":{"nodes":[]}}
+          ]},
+          "mine":{"nodes":[]}
+        }}
+        """#
+        let s = try GitHubAPI.parse(Data(json.utf8), host: "github.com", at: now)
+        let byNumber = Dictionary(uniqueKeysWithValues: s.toReview.map { ($0.number, $0) })
+        XCTAssertEqual(byNumber[1]?.reviewDecision, .approved)
+        XCTAssertEqual(byNumber[2]?.reviewDecision, .changesRequested)
+        XCTAssertEqual(byNumber[3]?.reviewDecision, .reviewRequired)
+        XCTAssertNil(byNumber[4]?.reviewDecision, "explizites null")
+        XCTAssertNil(byNumber[5]?.reviewDecision, "unbekannter Enum-Wert wird wie null behandelt")
+        XCTAssertNil(byNumber[6]?.reviewDecision, "Feld fehlt ganz")
+        // reviewDecision ist seit der Verfeinerung von Issue #21 (28.09.2026) nur noch informativ –
+        // ob ein Review-Request zählt, entscheidet needsMyReview über reviewRequests/reviews
+        // (siehe testParsesReviewRequestsAndComputesNeedsMyReview unten), nicht mehr dieses Feld.
+    }
+
+    // MARK: reviewRequests/reviews → needsMyReview (Issue #21, Verfeinerung 28.09.2026)
+
+    func testParsesReviewRequestsAndComputesNeedsMyReview() throws {
+        let json = #"""
+        {"data":{
+          "viewer": {"login": "florian"},
+          "review":{"nodes":[
+            {"number":1,"title":"Code-Owner offen","url":"https://github.com/a/b/pull/1","repository":{"nameWithOwner":"a/b"},
+             "author":{"login":"author1"},"commits":{"nodes":[]},
+             "reviewRequests":{"nodes":[{"asCodeOwner":true,"requestedReviewer":{"__typename":"User","login":"florian"}}]},
+             "reviews":{"nodes":[]}},
+            {"number":2,"title":"Code-Owner fremd entschieden","url":"https://github.com/a/b/pull/2","repository":{"nameWithOwner":"a/b"},
+             "author":{"login":"author1"},"commits":{"nodes":[]},
+             "reviewRequests":{"nodes":[{"asCodeOwner":true,"requestedReviewer":{"__typename":"User","login":"florian"}}]},
+             "reviews":{"nodes":[{"author":{"login":"other"},"state":"APPROVED"}]}},
+            {"number":3,"title":"Code-Owner nur Autor-Review","url":"https://github.com/a/b/pull/3","repository":{"nameWithOwner":"a/b"},
+             "author":{"login":"author1"},"commits":{"nodes":[]},
+             "reviewRequests":{"nodes":[{"asCodeOwner":true,"requestedReviewer":{"__typename":"User","login":"florian"}}]},
+             "reviews":{"nodes":[{"author":{"login":"author1"},"state":"APPROVED"}]}},
+            {"number":4,"title":"Extra trotz fremder Freigabe","url":"https://github.com/a/b/pull/4","repository":{"nameWithOwner":"a/b"},
+             "author":{"login":"author1"},"commits":{"nodes":[]},
+             "reviewRequests":{"nodes":[{"asCodeOwner":false,"requestedReviewer":{"__typename":"User","login":"florian"}}]},
+             "reviews":{"nodes":[{"author":{"login":"other"},"state":"APPROVED"}]}},
+            {"number":5,"title":"Team-Code-Owner","url":"https://github.com/a/b/pull/5","repository":{"nameWithOwner":"a/b"},
+             "author":{"login":"author1"},"commits":{"nodes":[]},
+             "reviewRequests":{"nodes":[{"asCodeOwner":true,"requestedReviewer":{"__typename":"Team","name":"platform"}}]},
+             "reviews":{"nodes":[]}},
+            {"number":6,"title":"Anfrage an andere","url":"https://github.com/a/b/pull/6","repository":{"nameWithOwner":"a/b"},
+             "author":{"login":"author1"},"commits":{"nodes":[]},
+             "reviewRequests":{"nodes":[{"asCodeOwner":true,"requestedReviewer":{"__typename":"User","login":"jemand-anders"}}]},
+             "reviews":{"nodes":[]}},
+            {"number":7,"title":"Non-Code-Owner-Team ignoriert","url":"https://github.com/a/b/pull/7","repository":{"nameWithOwner":"a/b"},
+             "author":{"login":"author1"},"commits":{"nodes":[]},
+             "reviewRequests":{"nodes":[{"asCodeOwner":false,"requestedReviewer":{"__typename":"Team","name":"platform"}}]},
+             "reviews":{"nodes":[]}},
+            {"number":8,"title":"Eigene frühere Freigabe, erneut angefragt","url":"https://github.com/a/b/pull/8","repository":{"nameWithOwner":"a/b"},
+             "author":{"login":"author1"},"commits":{"nodes":[]},
+             "reviewRequests":{"nodes":[{"asCodeOwner":true,"requestedReviewer":{"__typename":"User","login":"florian"}}]},
+             "reviews":{"nodes":[{"author":{"login":"florian"},"state":"APPROVED"}]}},
+            {"number":9,"title":"Eigene frühere Freigabe plus fremde Freigabe","url":"https://github.com/a/b/pull/9","repository":{"nameWithOwner":"a/b"},
+             "author":{"login":"author1"},"commits":{"nodes":[]},
+             "reviewRequests":{"nodes":[{"asCodeOwner":true,"requestedReviewer":{"__typename":"User","login":"florian"}}]},
+             "reviews":{"nodes":[{"author":{"login":"florian"},"state":"APPROVED"},{"author":{"login":"other"},"state":"APPROVED"}]}}
+          ]},
+          "mine":{"nodes":[]}
+        }}
+        """#
+        let s = try GitHubAPI.parse(Data(json.utf8), host: "github.com", at: now)
+        let byNumber = Dictionary(uniqueKeysWithValues: s.toReview.map { ($0.number, $0) })
+
+        XCTAssertTrue(byNumber[1]!.needsMyReview, "Code-Owner-Anfrage ohne Reviews zählt")
+        XCTAssertTrue(byNumber[1]!.hasCodeOwnerRequestForMe)
+        XCTAssertFalse(byNumber[1]!.hasExtraRequestForMe)
+
+        XCTAssertFalse(byNumber[2]!.needsMyReview, "fremdes APPROVED erledigt die Code-Owner-Anfrage")
+
+        XCTAssertTrue(byNumber[3]!.needsMyReview, "ein Review nur durch den Autor zählt nicht als Code-Owner-Review")
+
+        XCTAssertTrue(byNumber[4]!.needsMyReview, "Extra-Anfrage zählt trotz fremder Freigabe")
+        XCTAssertTrue(byNumber[4]!.hasExtraRequestForMe)
+
+        XCTAssertTrue(byNumber[5]!.needsMyReview, "Team-Code-Owner-Anfrage zählt")
+        XCTAssertTrue(byNumber[5]!.hasCodeOwnerRequestForMe)
+
+        XCTAssertFalse(byNumber[6]!.needsMyReview, "Anfrage an jemand anderen zählt nicht")
+        XCTAssertFalse(byNumber[6]!.hasCodeOwnerRequestForMe)
+
+        XCTAssertFalse(byNumber[7]!.needsMyReview, "Non-Code-Owner-Team-Anfrage wird ignoriert")
+
+        // Befund verifier, 28.09.2026: hasForeignApprovalOrChangesRequested schloss ursprünglich
+        // nur den PR-Autor aus, nicht den Viewer selbst – eine eigene frühere Freigabe zählte
+        // dadurch fälschlich als fremde Erledigung, sobald ich erneut als Code-Owner angefragt wurde.
+        XCTAssertTrue(byNumber[8]!.needsMyReview,
+                      "eine frühere eigene Freigabe erledigt eine erneute Code-Owner-Anfrage nicht")
+        XCTAssertFalse(byNumber[8]!.hasForeignApprovalOrChangesRequested)
+
+        XCTAssertFalse(byNumber[9]!.needsMyReview,
+                       "zusätzlich zur eigenen alten Freigabe erledigt eine fremde Freigabe die Anfrage")
+        XCTAssertTrue(byNumber[9]!.hasForeignApprovalOrChangesRequested)
+    }
 }
