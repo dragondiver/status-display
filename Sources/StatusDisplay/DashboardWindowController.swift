@@ -1,4 +1,5 @@
 import AppKit
+import StatusCore
 import SwiftUI
 
 /// Das Dashboard-Fenster (status-display#24). Wie das Board-Fenster (#23) ein eigenes `NSWindow`
@@ -12,7 +13,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     var onClosed: (() -> Void)?
 
     private let model: AppModel
-    private lazy var window: NSWindow = makeWindow()
+    /// Wie beim Board-Fenster erst in `show` erzeugt (status-display#36), nie als Nebenwirkung.
+    private lazy var window = DeferredWindow { [unowned self] in self.makeWindow() }
 
     init(model: AppModel) {
         self.model = model
@@ -21,6 +23,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
 
     /// Öffnet das Fenster (oder holt ein offenes nach vorne) und aktiviert die App.
     func show() {
+        let window = window.materialize()
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
     }
