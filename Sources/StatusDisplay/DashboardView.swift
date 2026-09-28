@@ -16,6 +16,7 @@ struct DashboardView: View {
         case section(DashboardSection)
         case repo(String)
         case hidden
+        case agent(String)
     }
 
     @State private var sidebar: SidebarSelection? = .section(.waiting)
@@ -27,7 +28,7 @@ struct DashboardView: View {
         let dashboard = model.dashboard(now: now)
         let items = listItems(dashboard)
         NavigationSplitView {
-            DashboardSidebar(dashboard: dashboard, selection: $sidebar)
+            DashboardSidebar(dashboard: dashboard, selection: $sidebar, now: now)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 280)
         } content: {
             DashboardList(dashboard: dashboard, selection: sidebar, items: items, now: now,
@@ -78,6 +79,7 @@ struct DashboardView: View {
         case .section(let section)?: return dashboard.items(in: section)
         case .repo(let key)?: return dashboard.items(inRepo: key)
         case .hidden?: return dashboard.hiddenReviews
+        case .agent(let id)?: return dashboard.agentItem(id: id).map { [$0] } ?? []
         case nil: return []
         }
     }
@@ -133,13 +135,20 @@ struct DashboardView: View {
 private struct DashboardSidebar: View {
     let dashboard: Dashboard
     @Binding var selection: DashboardView.SidebarSelection?
+    let now: Date
 
     var body: some View {
         List(selection: $selection) {
+            // „Wartet auf dich“ bleibt oben, ohne eigene Überschrift (Entscheidung Florian,
+            // 28.09.2026, status-display#39).
             Section {
-                ForEach(DashboardSection.allCases) { section in
-                    let count = dashboard.count(section)
-                    SidebarRow(title: section.title, count: count, waiting: section == .waiting && count > 0)
+                SidebarRow(title: DashboardSection.waiting.title, count: dashboard.count(.waiting),
+                          waiting: dashboard.count(.waiting) > 0)
+                    .tag(DashboardView.SidebarSelection.section(.waiting))
+            }
+            Section("Pull Requests") {
+                ForEach([DashboardSection.codeOwner, .mine, .approved]) { section in
+                    SidebarRow(title: section.title, count: dashboard.count(section), waiting: false)
                         .tag(DashboardView.SidebarSelection.section(section))
                 }
             }
@@ -160,8 +169,59 @@ private struct DashboardSidebar: View {
                         .tag(DashboardView.SidebarSelection.hidden)
                 }
             }
+            Section("Agenten") {
+                if dashboard.agents.isEmpty {
+                    Text(DashboardText.noActiveAgents)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(dashboard.agents) { item in
+                        AgentSidebarRow(item: item, now: now)
+                            .tag(DashboardView.SidebarSelection.agent(item.id))
+                    }
+                }
+            }
         }
         .listStyle(.sidebar)
+    }
+}
+
+/// Eine Zeile je Agent im Abschnitt „Agenten“ der Seitenleiste (status-display#39): Zustandspunkt
+/// und Zustandstext statt eines Sammel-Eintrags mit Zähler.
+private struct AgentSidebarRow: View {
+    let item: DashboardItem
+    let now: Date
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(markColor)
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            Text(name).lineLimit(1)
+            Spacer(minLength: 4)
+            Text(stateText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    private var markColor: Color {
+        switch item.markKind {
+        case .waiting: return .orange
+        case .error: return .red
+        case .neutral: return Color.secondary.opacity(0.5)
+        }
+    }
+
+    private var name: String {
+        if case .agent(let agent) = item.subject { return agent.name }
+        return ""
+    }
+
+    private var stateText: String {
+        guard case .agent(let agent) = item.subject else { return "" }
+        return BoardText.agentLabel(agent, now: now)
     }
 }
 
@@ -265,10 +325,11 @@ private struct DashboardRow: View {
     }
 
     private var markColor: Color {
-        if item.isWaitingForMe { return .orange }
-        if item.tags.contains(.ciFailing) || item.tags.contains(.agentError) { return .red }
-        if item.urgency == .ownActionNeeded { return .orange }
-        return Color.secondary.opacity(0.5)
+        switch item.markKind {
+        case .waiting: return .orange
+        case .error: return .red
+        case .neutral: return Color.secondary.opacity(0.5)
+        }
     }
 
     private var headline: String {

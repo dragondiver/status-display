@@ -55,7 +55,7 @@ final class DashboardTests: XCTestCase {
         XCTAssertEqual(d.count(.waiting), 5)
         XCTAssertEqual(d.count(.codeOwner), 1)
         XCTAssertEqual(d.count(.mine), 3)
-        XCTAssertEqual(d.count(.agents), 2)
+        XCTAssertEqual(d.agents.count, 2)
         XCTAssertEqual(d.count(.approved), 1)
     }
 
@@ -117,6 +117,54 @@ final class DashboardTests: XCTestCase {
         let d = build(agents: [agent("r1", .running, sinceMinutes: 5), agent("w1", .waiting, sinceMinutes: 1),
                                agent("r2", .running, sinceMinutes: 50), agent("w2", .waiting, sinceMinutes: 30)])
         XCTAssertEqual(numbers(d.agents), ["w2", "w1", "r2", "r1"])
+    }
+
+    // MARK: Agenten-Abschnitt der Seitenleiste (status-display#39)
+
+    func testAgentItemLooksUpByIDForSidebarSelection() {
+        // Die Seitenleiste taggt jede Zeile mit `DashboardItem.id` ("agent:<AgentActivity.id>");
+        // dieselbe Zeichenkette kommt beim Klick hier wieder rein (status-display#39).
+        let d = build(agents: [agent("w", .waiting), agent("e", .error)])
+        XCTAssertEqual(d.agentItem(id: "agent:w")?.id, "agent:w")
+        XCTAssertEqual(d.agentItem(id: "agent:e")?.id, "agent:e")
+        XCTAssertNil(d.agentItem(id: "missing"))
+    }
+
+    func testAgentMarkKindMatchesStateColorRules() {
+        let d = build(agents: [agent("w", .waiting), agent("e", .error), agent("r", .running),
+                               agent("s", .running, stale: true), agent("dn", .done)])
+        let byID = Dictionary(uniqueKeysWithValues: d.agents.map { ($0.id, $0) })
+        XCTAssertEqual(byID["agent:w"]?.markKind, .waiting)
+        XCTAssertEqual(byID["agent:e"]?.markKind, .error)
+        XCTAssertEqual(byID["agent:r"]?.markKind, .neutral)
+        XCTAssertEqual(byID["agent:s"]?.markKind, .neutral)
+        XCTAssertEqual(byID["agent:dn"]?.markKind, .neutral)
+    }
+
+    func testOwnPRWithChangesRequestedMarksWaitingWithoutRedCITag() {
+        // Änderungen angefordert ohne rote CI: `ownActionNeeded`, aber kein `.ciFailing`-Etikett –
+        // der dritte Zweig von `markKind` greift (orange, nicht rot).
+        let d = build(mine: [pr(1, decision: .changesRequested)])
+        XCTAssertEqual(d.mine.first?.markKind, .waiting)
+    }
+
+    func testOwnPRWithFailingCIMarksErrorNotWaiting() {
+        // Rote CI hat Vorrang vor `ownActionNeeded` (wie schon `DashboardRow.markColor` vor #39).
+        let d = build(mine: [pr(1, failing: true)])
+        XCTAssertEqual(d.mine.first?.markKind, .error)
+    }
+
+    func testCiFailingReviewMarksError() {
+        let d = build(review: [pr(1, extra: true)])
+        // Extra-Anfragen selbst sind "waiting" (isWaitingForMe); roter CI-Tag auf einem
+        // Nicht-eigenen Review-Item kommt nicht vor, das prüft testTagsNeverRelyOnColorAlone.
+        XCTAssertEqual(d.waiting.first?.markKind, .waiting)
+    }
+
+    func testNoActiveAgentsTextIsUsedForEmptySidebarSection() {
+        let d = build()
+        XCTAssertTrue(d.agents.isEmpty)
+        XCTAssertEqual(DashboardText.noActiveAgents, "Keine aktiven Agenten")
     }
 
     // MARK: Repos und Ausblenden
@@ -204,11 +252,11 @@ final class DashboardTests: XCTestCase {
     // MARK: Tastatur und Dock
 
     func testSectionShortcutNumbers() {
-        XCTAssertEqual(DashboardSection.allCases.map(\.rawValue), [1, 2, 3, 4, 5])
+        XCTAssertEqual(DashboardSection.allCases.map(\.rawValue), [1, 2, 3, 4])
         XCTAssertEqual(DashboardSection(shortcutNumber: 1), .waiting)
-        XCTAssertEqual(DashboardSection(shortcutNumber: 5), .approved)
+        XCTAssertEqual(DashboardSection(shortcutNumber: 4), .approved)
         XCTAssertNil(DashboardSection(shortcutNumber: 0))
-        XCTAssertNil(DashboardSection(shortcutNumber: 6))
+        XCTAssertNil(DashboardSection(shortcutNumber: 5))
     }
 
     func testDockIconWhileAnyWindowIsOpen() {
