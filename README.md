@@ -52,6 +52,7 @@ kleingeschrieben).
 
     StatusDisplay hook claude-code|codex   # von Hooks aufgerufen, liest stdin
     StatusDisplay preview board.png        # Beispielbild rendern
+    StatusDisplay preview-window fenster.png 480 110 [--ohne-agenten]  # Board-Fenster in Punktgröße, 2×
     StatusDisplay display-test             # 15 s Farbfelder aufs Panel
     StatusDisplay version
 
