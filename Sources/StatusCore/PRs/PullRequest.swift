@@ -8,6 +8,44 @@ public enum ReviewDecision: String, Equatable {
     case reviewRequired = "REVIEW_REQUIRED"
 }
 
+/// Ob GitHub den PR konfliktfrei mergen könnte (`mergeable` im GraphQL-Schema). `UNKNOWN` heißt,
+/// GitHub rechnet noch – das Dashboard zeigt dann nichts statt einer Vermutung.
+public enum Mergeable: String, Equatable {
+    case mergeable = "MERGEABLE"
+    case conflicting = "CONFLICTING"
+    case unknown = "UNKNOWN"
+}
+
+/// Zusammenfassung der Checks am letzten Commit (`statusCheckRollup.contexts`), fürs Dashboard
+/// (status-display#24). `total` kommt aus `totalCount`; gelesen werden nur die ersten
+/// `GitHubAPI.checkContextLimit` Einträge, alles darüber hinaus steckt in `other`.
+public struct CheckSummary: Equatable {
+    public let total: Int
+    public let passed: Int
+    public let failed: Int
+    /// Laufend, wartend, unbekannter Zustand oder jenseits der gelesenen Einträge.
+    public var other: Int { max(0, total - passed - failed) }
+
+    public init(total: Int, passed: Int, failed: Int) {
+        self.total = total; self.passed = passed; self.failed = failed
+    }
+}
+
+/// Letzter Review-Zustand eines Reviewers (ohne den PR-Autor), fürs Dashboard.
+public struct ReviewSummary: Equatable {
+    public enum State: String, Equatable {
+        case approved = "APPROVED"
+        case changesRequested = "CHANGES_REQUESTED"
+        case commented = "COMMENTED"
+        case dismissed = "DISMISSED"
+        case pending = "PENDING"
+    }
+    public let login: String
+    public let state: State
+
+    public init(login: String, state: State) { self.login = login; self.state = state }
+}
+
 public struct PullRequest: Equatable, Identifiable {
     public let number: Int
     public let title: String
@@ -32,6 +70,20 @@ public struct PullRequest: Equatable, Identifiable {
     /// nicht mehr, ob der jeweilige Reviewer Code-Owner war – ein Review nur durch den Autor selbst
     /// zählt bewusst nicht als „Code-Owner hat reviewt“.
     public let hasForeignApprovalOrChangesRequested: Bool
+
+    // Details fürs Dashboard (status-display#24). Alle optional: fehlt ein Feld in der Antwort
+    // (ältere GHE-Version, Teilantwort), bleibt der PR trotzdem erhalten.
+    public let createdAt: Date?
+    public let additions: Int?
+    public let deletions: Int?
+    public let changedFiles: Int?
+    public let mergeable: Mergeable?
+    public let authorLogin: String?
+    /// Anzeigename des Autors, falls GitHub einen liefert (nur bei `User`, nicht bei Bots).
+    public let authorName: String?
+    public let checks: CheckSummary?
+    /// Letzter Zustand je Reviewer (ohne den Autor), in der Reihenfolge des ersten Auftretens.
+    public let reviews: [ReviewSummary]
     public var id: String { url.absoluteString }
 
     /// Zählt dieser Review-Request noch als „zu reviewen“?
@@ -49,13 +101,20 @@ public struct PullRequest: Equatable, Identifiable {
 
     public init(number: Int, title: String, repository: String, url: URL, ciFailing: Bool, isDraft: Bool = false,
                reviewDecision: ReviewDecision? = nil, hasCodeOwnerRequestForMe: Bool = false,
-               hasExtraRequestForMe: Bool = false, hasForeignApprovalOrChangesRequested: Bool = false) {
+               hasExtraRequestForMe: Bool = false, hasForeignApprovalOrChangesRequested: Bool = false,
+               createdAt: Date? = nil, additions: Int? = nil, deletions: Int? = nil, changedFiles: Int? = nil,
+               mergeable: Mergeable? = nil, authorLogin: String? = nil, authorName: String? = nil,
+               checks: CheckSummary? = nil, reviews: [ReviewSummary] = []) {
         self.number = number; self.title = title; self.repository = repository; self.url = url; self.ciFailing = ciFailing
         self.isDraft = isDraft
         self.reviewDecision = reviewDecision
         self.hasCodeOwnerRequestForMe = hasCodeOwnerRequestForMe
         self.hasExtraRequestForMe = hasExtraRequestForMe
         self.hasForeignApprovalOrChangesRequested = hasForeignApprovalOrChangesRequested
+        self.createdAt = createdAt; self.additions = additions; self.deletions = deletions
+        self.changedFiles = changedFiles; self.mergeable = mergeable
+        self.authorLogin = authorLogin; self.authorName = authorName
+        self.checks = checks; self.reviews = reviews
     }
 }
 

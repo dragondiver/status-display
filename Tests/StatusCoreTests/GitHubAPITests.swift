@@ -189,4 +189,106 @@ final class GitHubAPITests: XCTestCase {
                        "zusätzlich zur eigenen alten Freigabe erledigt eine fremde Freigabe die Anfrage")
         XCTAssertTrue(byNumber[9]!.hasForeignApprovalOrChangesRequested)
     }
+
+    // MARK: Detailfelder fürs Dashboard (status-display#24)
+
+    func testQueryRequestsDetailFields() {
+        for field in ["createdAt", "additions", "deletions", "changedFiles", "mergeable", "... on User { name }",
+                      "contexts(first: 50)", "totalCount", "... on CheckRun { status conclusion }",
+                      "... on StatusContext { state }"] {
+            XCTAssertTrue(GitHubAPI.query.contains(field), field)
+        }
+    }
+
+    func testParsesDetailFields() throws {
+        let json = #"""
+        {"data":{"viewer":{"login":"me"},
+          "review":{"nodes":[]},
+          "mine":{"nodes":[
+            {"number":1,"title":"T","url":"https://github.com/a/b/pull/1","repository":{"nameWithOwner":"a/b"},
+             "createdAt":"2026-09-26T10:00:00Z","additions":7,"deletions":3,"changedFiles":5,"mergeable":"CONFLICTING",
+             "author":{"login":"me","name":"Dev Me"},
+             "commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE","contexts":{"totalCount":9,"nodes":[
+               {"__typename":"CheckRun","status":"COMPLETED","conclusion":"SUCCESS"},
+               {"__typename":"CheckRun","status":"COMPLETED","conclusion":"SKIPPED"},
+               {"__typename":"CheckRun","status":"COMPLETED","conclusion":"NEUTRAL"},
+               {"__typename":"CheckRun","status":"COMPLETED","conclusion":"FAILURE"},
+               {"__typename":"CheckRun","status":"COMPLETED","conclusion":"TIMED_OUT"},
+               {"__typename":"CheckRun","status":"IN_PROGRESS","conclusion":null},
+               {"__typename":"StatusContext","state":"SUCCESS"},
+               {"__typename":"StatusContext","state":"ERROR"},
+               {"__typename":"StatusContext","state":"PENDING"}
+             ]}}}}]},
+             "reviews":{"nodes":[
+               {"author":{"login":"dev-b"},"state":"COMMENTED"},
+               {"author":{"login":"me"},"state":"COMMENTED"},
+               {"author":{"login":"dev-c"},"state":"CHANGES_REQUESTED"},
+               {"author":{"login":"dev-b"},"state":"APPROVED"},
+               {"author":{"login":"dev-d"},"state":"SOMETHING_NEW"}
+             ]}}
+          ]}
+        }}
+        """#
+        let p = try XCTUnwrap(GitHubAPI.parse(Data(json.utf8), host: "github.com", at: now).mine.first)
+        XCTAssertEqual(p.createdAt, Date(timeIntervalSince1970: 1_790_416_800))
+        XCTAssertEqual(p.additions, 7)
+        XCTAssertEqual(p.deletions, 3)
+        XCTAssertEqual(p.changedFiles, 5)
+        XCTAssertEqual(p.mergeable, .conflicting)
+        XCTAssertEqual(p.authorLogin, "me")
+        XCTAssertEqual(p.authorName, "Dev Me")
+        XCTAssertEqual(p.checks, CheckSummary(total: 9, passed: 4, failed: 3))
+        XCTAssertEqual(p.checks?.other, 2)
+        // Letzter Zustand je Reviewer, ohne Autor und ohne unbekannten Zustand.
+        XCTAssertEqual(p.reviews, [ReviewSummary(login: "dev-b", state: .approved),
+                                   ReviewSummary(login: "dev-c", state: .changesRequested)])
+    }
+
+    func testMissingOrMalformedDetailFieldsKeepTheNode() throws {
+        let json = #"""
+        {"data":{
+          "review":{"nodes":[
+            {"number":1,"title":"Ohne alles","url":"https://github.com/a/b/pull/1","repository":{"nameWithOwner":"a/b"}},
+            {"number":2,"title":"Nulls","url":"https://github.com/a/b/pull/2","repository":{"nameWithOwner":"a/b"},
+             "createdAt":null,"additions":null,"deletions":null,"changedFiles":null,"mergeable":null,
+             "author":{"login":"dev-a","name":null},
+             "commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS","contexts":null}}}]}},
+            {"number":3,"title":"Falsche Typen","url":"https://github.com/a/b/pull/3","repository":{"nameWithOwner":"a/b"},
+             "createdAt":"kein Datum","additions":"viele","deletions":{},"changedFiles":[],"mergeable":"MAYBE",
+             "author":{"login":"dev-a","name":""},
+             "commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE","contexts":{"totalCount":"x","nodes":7}}}}]}},
+            {"number":4,"title":"Unbekannte Check-Werte","url":"https://github.com/a/b/pull/4","repository":{"nameWithOwner":"a/b"},
+             "commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"PENDING","contexts":{"nodes":[
+               {"__typename":"CheckRun","status":"COMPLETED","conclusion":"STALE"},
+               {"__typename":"KuenftigerTyp"},
+               null
+             ]}}}}]}}
+          ]},
+          "mine":{"nodes":[]}
+        }}
+        """#
+        let prs = try GitHubAPI.parse(Data(json.utf8), host: "github.com", at: now).toReview
+        XCTAssertEqual(prs.map(\.number), [1, 2, 3, 4])
+        for p in prs.prefix(3) {
+            XCTAssertNil(p.createdAt)
+            XCTAssertNil(p.additions)
+            XCTAssertNil(p.deletions)
+            XCTAssertNil(p.changedFiles)
+            XCTAssertNil(p.mergeable)
+            XCTAssertNil(p.authorName)
+            XCTAssertNil(p.checks)
+            XCTAssertEqual(p.reviews, [])
+        }
+        XCTAssertNil(prs[0].authorLogin)
+        XCTAssertEqual(prs[1].authorLogin, "dev-a")
+        XCTAssertTrue(prs[2].ciFailing, "Gesamtzustand bleibt auch ohne lesbare Einzelzählung erhalten")
+        // Ohne totalCount zählt die Zahl der gelesenen Einträge; Unbekanntes bleibt als „offen“ sichtbar.
+        XCTAssertEqual(prs[3].checks, CheckSummary(total: 2, passed: 0, failed: 0))
+    }
+
+    func testParsesDatesWithFractionalSeconds() {
+        XCTAssertEqual(GitHubAPI.parseDate("2026-09-26T10:00:00.500Z"), Date(timeIntervalSince1970: 1_790_416_800.5))
+        XCTAssertEqual(GitHubAPI.parseDate("2026-09-26T10:00:00Z"), Date(timeIntervalSince1970: 1_790_416_800))
+        XCTAssertNil(GitHubAPI.parseDate("gestern"))
+    }
 }

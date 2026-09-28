@@ -1,0 +1,184 @@
+<title>StatusDisplay Dashboard-Entwürfe</title>
+<style>
+:root{
+  --bg:oklch(0.975 0.004 250);--panel:oklch(0.995 0.002 250);--side:oklch(0.955 0.006 250);
+  --line:oklch(0.9 0.006 250);--text:oklch(0.24 0.01 250);--muted:oklch(0.52 0.012 250);--faint:oklch(0.68 0.01 250);
+  --wait:oklch(0.68 0.15 65);--wait-bg:oklch(0.95 0.045 75);--wait-ink:oklch(0.45 0.11 60);
+  --red:oklch(0.58 0.19 27);--red-bg:oklch(0.95 0.035 25);--green:oklch(0.6 0.13 150);
+  --sel:oklch(0.93 0.025 250);--focus:oklch(0.55 0.12 250);
+  --status:oklch(0.5 0.16 15);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;
+  --bg:oklch(0.2 0.006 250);--panel:oklch(0.23 0.007 250);--side:oklch(0.205 0.008 250);
+  --line:oklch(0.32 0.008 250);--text:oklch(0.93 0.004 250);--muted:oklch(0.7 0.01 250);--faint:oklch(0.55 0.01 250);
+  --wait:oklch(0.78 0.14 70);--wait-bg:oklch(0.33 0.05 65);--wait-ink:oklch(0.86 0.1 75);
+  --red:oklch(0.7 0.16 25);--red-bg:oklch(0.32 0.06 25);--green:oklch(0.72 0.12 150);--sel:oklch(0.3 0.02 250);
+}}
+:root[data-theme=dark]{color-scheme:dark;
+  --bg:oklch(0.2 0.006 250);--panel:oklch(0.23 0.007 250);--side:oklch(0.205 0.008 250);
+  --line:oklch(0.32 0.008 250);--text:oklch(0.93 0.004 250);--muted:oklch(0.7 0.01 250);--faint:oklch(0.55 0.01 250);
+  --wait:oklch(0.78 0.14 70);--wait-bg:oklch(0.33 0.05 65);--wait-ink:oklch(0.86 0.1 75);
+  --red:oklch(0.7 0.16 25);--red-bg:oklch(0.32 0.06 25);--green:oklch(0.72 0.12 150);--sel:oklch(0.3 0.02 250);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;padding:20px 16px 40px}
+h2{text-wrap:balance}
+.item .r,.nav .n{font-variant-numeric:tabular-nums}
+.top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;max-width:1100px;margin:0 auto 18px}
+.top button{font:inherit;padding:6px 12px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--text);cursor:pointer}
+.top button[aria-pressed=true]{border-color:var(--focus);background:var(--sel)}
+.top .sp{flex:1}
+.stage{max-width:1100px;margin:0 auto;overflow-x:auto}
+.stage>.win{margin:0 auto;max-width:none}
+.win{background:var(--panel);border:1px solid var(--line);border-radius:11px;overflow:hidden;box-shadow:0 18px 40px -24px oklch(0.2 0.02 250/0.35)}
+.chrome{height:30px;display:flex;align-items:center;gap:7px;padding:0 11px;border-bottom:1px solid var(--line);background:var(--side)}
+.chrome i{width:11px;height:11px;border-radius:50%;display:block}
+.chrome .t{margin-left:8px;color:var(--muted);font-size:12px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:2px 9px 2px 7px;border-radius:999px;background:var(--sel);color:var(--text);white-space:nowrap}
+.chip b{width:8px;height:8px;border-radius:50%;background:var(--status);display:block}
+h3{font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--muted);margin:14px 0 4px;text-transform:uppercase}
+.item{display:grid;grid-template-columns:14px 1fr auto;gap:8px;align-items:start;padding:6px 8px;border-radius:7px;cursor:pointer;text-decoration:none;color:inherit}
+.item:hover{background:var(--sel)}
+.item:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.item .m{color:var(--muted);font-size:12px}
+.item .r{color:var(--faint);font-size:12px;white-space:nowrap}
+.mark{width:8px;height:8px;border-radius:50%;margin-top:5px}
+.tag{font-size:11px;padding:0 6px;border-radius:5px;margin-right:4px}
+.tag.x{background:var(--wait-bg);color:var(--wait-ink)}
+.tag.ci{background:var(--red-bg);color:var(--red)}
+.tag.o{background:var(--sel);color:var(--muted)}
+.urgent{background:var(--wait-bg);border-radius:9px;padding:4px}
+.urgent h3{color:var(--wait-ink);margin:6px 8px 2px}
+.calm{color:var(--muted);padding:14px 8px}
+.foot{border-top:1px solid var(--line);padding:6px 12px;color:var(--faint);font-size:11.5px;display:flex;justify-content:space-between}
+.col{overflow:auto}
+.nav a{display:flex;justify-content:space-between;padding:5px 10px;border-radius:6px;color:inherit;text-decoration:none}
+.nav a[aria-current=true]{background:var(--sel)}
+.nav .n{color:var(--muted)}
+.nav .n.w{color:var(--wait-ink);font-weight:600}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:6px 12px;font-size:12.5px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0}
+.btn{font:inherit;padding:5px 12px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--text);cursor:pointer}
+.btn.p{background:var(--text);color:var(--panel);border-color:var(--text)}
+.note{max-width:1100px;margin:14px auto 0;color:var(--muted);font-size:12.5px;text-align:center}
+.tabs{display:flex;gap:2px;padding:6px 10px;border-bottom:1px solid var(--line)}
+.tabs button{font:inherit;border:0;background:none;color:var(--muted);padding:4px 10px;border-radius:6px;cursor:pointer}
+.tabs button[aria-selected=true]{background:var(--sel);color:var(--text)}
+.tabs .c{font-size:11px;margin-left:4px}
+.tabs .c.w{color:var(--wait-ink);font-weight:600}
+@media (prefers-reduced-motion:no-preference){.item{transition:background-color .15s cubic-bezier(.22,1,.36,1)}}
+</style>
+<div class="top" role="toolbar" aria-label="Entwurf wählen">
+  <button data-v="a" aria-pressed="true">A · Seitenstreifen</button>
+  <button data-v="b" aria-pressed="false">B · Mail-artig</button>
+  <button data-v="c" aria-pressed="false">C · Kompakt mit Reitern</button>
+  <span class="sp"></span>
+  <button id="calm" aria-pressed="false">Ruhiger Zustand</button>
+  <button id="theme">Hell / Dunkel</button>
+</div>
+
+<div class="stage">
+<!-- A -->
+<section id="v-a" class="win" style="width:360px">
+  <div class="chrome"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="t">StatusDisplay</span></div>
+  <div style="padding:10px 12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)">
+    <span class="chip"><b></b>Deep Focus · seit 47 min</span><span style="color:var(--faint);font-size:12px">14:06</span>
+  </div>
+  <div class="col busy" style="padding:8px 8px 10px;height:520px">
+    <div class="urgent">
+      <h3>Wartet auf dich · 3</h3>
+      <a class="item" href="#"><span class="mark" style="background:var(--wait)"></span><span><span class="tag x">Extra</span>team-api #166<div class="m">Update Java-Version im Workflow</div></span><span class="r">2 T</span></a>
+      <a class="item" href="#"><span class="mark" style="background:var(--wait)"></span><span>Agent rundfunk<div class="m">wartet auf Freigabe: Bash</div></span><span class="r">1:05 h</span></a>
+      <a class="item" href="#"><span class="mark" style="background:var(--red)"></span><span><span class="tag ci">CI rot</span>team-api #170<div class="m">Dein PR: Caching für Inbox</div></span><span class="r">3 h</span></a>
+    </div>
+    <h3>Reviews als Code-Owner · 8</h3>
+    <a class="item" href="#"><span class="mark" style="background:var(--faint)"></span><span>team-bff #218<div class="m">Neues Home-Widget</div></span><span class="r">1 T</span></a>
+    <a class="item" href="#"><span class="mark" style="background:var(--faint)"></span><span>team-bff #215<div class="m">Feature-Flag für Push</div></span><span class="r">2 T</span></a>
+    <a class="item" href="#"><span class="mark" style="background:var(--faint)"></span><span>team-bbd #62<div class="m">Refactor Mapper</div></span><span class="r">4 T</span></a>
+    <a class="item" href="#" style="color:var(--muted)"><span></span><span>+ 5 weitere</span><span></span></a>
+    <h3>Deine PRs · 2</h3>
+    <a class="item" href="#"><span class="mark" style="background:var(--green)"></span><span>team-inbox #102<div class="m">wartet auf Review</div></span><span class="r">5 T</span></a>
+    <h3>Agenten</h3>
+    <a class="item" href="#"><span class="mark" style="background:var(--green)"></span><span>telefon-ai<div class="m">läuft</div></span><span class="r">12 min</span></a>
+    <a class="item" href="#"><span class="mark" style="background:var(--faint)"></span><span>heim-agent<div class="m">fertig</div></span><span class="r">4 min</span></a>
+  </div>
+  <div class="col calmv calm" style="height:520px;display:none"><p style="margin:24px 4px 6px;color:var(--text)">Nichts wartet auf dich.</p><p style="margin:0 4px">8 Code-Owner-Reviews sind schon von anderen erledigt. Zwei Agenten laufen.</p></div>
+  <div class="foot"><span>Stand 14:05 · github.com, GHE</span><span>⌘R</span></div>
+</section>
+
+<!-- B -->
+<section id="v-b" class="win" style="width:920px;display:none">
+  <div class="chrome"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="t">StatusDisplay</span><span style="flex:1"></span><span class="chip"><b></b>Deep Focus</span></div>
+  <div style="display:grid;grid-template-columns:190px 330px 1fr;height:500px">
+    <nav class="nav col" style="background:var(--side);border-right:1px solid var(--line);padding:10px 6px" aria-label="Bereiche">
+      <a href="#" aria-current="true"><span>Wartet auf dich</span><span class="n w">3</span></a>
+      <a href="#"><span>Code-Owner-Reviews</span><span class="n">8</span></a>
+      <a href="#"><span>Deine PRs</span><span class="n">2</span></a>
+      <a href="#"><span>Agenten</span><span class="n">4</span></a>
+      <a href="#"><span>Schon freigegeben</span><span class="n">3</span></a>
+      <h3 style="margin:16px 10px 4px">Repos</h3>
+      <a href="#"><span>team-api</span><span class="n w">2</span></a>
+      <a href="#"><span>team-bff</span><span class="n">4</span></a>
+      <a href="#"><span>team-bbd</span><span class="n">2</span></a>
+      <a href="#"><span>team-inbox</span><span class="n">1</span></a>
+      <h3 style="margin:16px 10px 4px">Später</h3>
+      <a href="#" style="color:var(--faint)"><span>Jira</span><span class="n">–</span></a>
+    </nav>
+    <div class="col busy" style="border-right:1px solid var(--line);padding:8px">
+      <a class="item" href="#" style="background:var(--sel)"><span class="mark" style="background:var(--wait)"></span><span><span class="tag x">Extra</span>team-api #166<div class="m">Update Java-Version im Workflow</div></span><span class="r">2 T</span></a>
+      <a class="item" href="#"><span class="mark" style="background:var(--wait)"></span><span>Agent rundfunk<div class="m">wartet auf Freigabe: Bash</div></span><span class="r">1:05 h</span></a>
+      <a class="item" href="#"><span class="mark" style="background:var(--red)"></span><span><span class="tag ci">CI rot</span>team-api #170<div class="m">Dein PR: Caching für Inbox</div></span><span class="r">3 h</span></a>
+    </div>
+    <div class="col calmv calm" style="border-right:1px solid var(--line);display:none">Nichts wartet auf dich.</div>
+    <article class="col" style="padding:18px 20px">
+      <div style="color:var(--muted);font-size:12px">team-api · #166</div>
+      <h2 style="font-size:17px;margin:4px 0 12px;font-weight:600">Update Java-Version im Workflow</h2>
+      <dl class="kv">
+        <dt>Warum bei dir</dt><dd><span class="tag x">Extra</span>ausdrücklich angefragt von Kollegin A</dd>
+        <dt>Autor</dt><dd>Kollegin A · vor 2 Tagen</dd>
+        <dt>Reviews</dt><dd>Kollege B hat freigegeben · du noch offen</dd>
+        <dt>CI</dt><dd><span style="color:var(--green)">●</span> 8 von 8 grün</dd>
+        <dt>Änderungen</dt><dd>5 Dateien · +7 −7 · Merge-Konflikt</dd>
+      </dl>
+      <div style="display:flex;gap:8px;margin-top:18px"><button class="btn p">Auf GitHub öffnen</button><button class="btn">Später</button></div>
+    </article>
+  </div>
+  <div class="foot"><span>Stand 14:05 · github.com, GHE</span><span>⌘R aktualisieren · ⌘1–4 Bereiche</span></div>
+</section>
+
+<!-- C -->
+<section id="v-c" class="win" style="width:640px;display:none">
+  <div class="chrome"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="t">StatusDisplay</span><span style="flex:1"></span><span class="chip"><b></b>Deep Focus · 47 min</span></div>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true">Wartet auf dich<span class="c w">3</span></button>
+    <button role="tab" aria-selected="false">Reviews<span class="c">8</span></button>
+    <button role="tab" aria-selected="false">Deine PRs<span class="c">2</span></button>
+    <button role="tab" aria-selected="false">Agenten<span class="c">4</span></button>
+  </div>
+  <div class="col busy" style="padding:6px 8px;height:300px">
+    <a class="item" href="#"><span class="mark" style="background:var(--wait)"></span><span><span class="tag x">Extra</span>team-api #166 · <span class="m">Update Java-Version im Workflow</span></span><span class="r">2 T</span></a>
+    <a class="item" href="#"><span class="mark" style="background:var(--wait)"></span><span>Agent rundfunk · <span class="m">wartet auf Freigabe: Bash</span></span><span class="r">1:05 h</span></a>
+    <a class="item" href="#"><span class="mark" style="background:var(--red)"></span><span><span class="tag ci">CI rot</span>team-api #170 · <span class="m">Dein PR: Caching für Inbox</span></span><span class="r">3 h</span></a>
+  </div>
+  <div class="col calmv calm" style="height:300px;display:none">Nichts wartet auf dich. <span style="color:var(--faint)">Die anderen Reiter zeigen, was sonst läuft.</span></div>
+  <div class="foot"><span>Stand 14:05</span><span>⌘R</span></div>
+</section>
+</div>
+<p class="note" id="note"></p>
+
+<script>
+const notes={
+ a:'A: schmaler Streifen am Bildschirmrand, eine Spalte zum Scrollen. „Wartet auf dich“ oben und orange hinterlegt, darunter Reviews, eigene PRs, Agenten. Gut neben der IDE.',
+ b:'B: drei Spalten wie Mail. Links Bereiche und Repos, Mitte Liste, rechts Details zum PR (warum bei dir, wer reviewt hat, CI). Am meisten Information, braucht mehr Platz.',
+ c:'C: breit und flach, Reiter statt Abschnitte. Zeigt immer nur eine Liste, bleibt klein. Nah am heutigen Board-Fenster.'};
+const btns=document.querySelectorAll('.top [data-v]');
+function show(v){btns.forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===v));['a','b','c'].forEach(k=>document.getElementById('v-'+k).style.display=k===v?'':'none');document.getElementById('note').textContent=notes[v]}
+btns.forEach(b=>b.addEventListener('click',()=>show(b.dataset.v)));
+const calm=document.getElementById('calm');
+calm.addEventListener('click',()=>{const on=calm.getAttribute('aria-pressed')!=='true';calm.setAttribute('aria-pressed',on);document.querySelectorAll('.busy').forEach(e=>e.style.display=on?'none':'');document.querySelectorAll('.calmv').forEach(e=>e.style.display=on?'':'none')});
+document.getElementById('theme').addEventListener('click',()=>{const r=document.documentElement;const dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;r.dataset.theme=dark?'light':'dark'});
+document.querySelectorAll('.tabs button').forEach(t=>t.addEventListener('click',()=>document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===t))));
+document.querySelectorAll('a[href="#"]').forEach(a=>a.addEventListener('click',e=>e.preventDefault()));
+show('a');
+</script>

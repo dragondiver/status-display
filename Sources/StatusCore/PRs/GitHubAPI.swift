@@ -7,6 +7,11 @@ public enum GitHubAPI {
             : URL(string: "https://\(host)/api/graphql")!
     }
 
+    /// Wie viele Check-Einträge pro PR für die CI-Zusammenfassung gelesen werden. `totalCount`
+    /// kommt trotzdem vollständig; was darüber hinausgeht, zählt als `CheckSummary.other`.
+    /// Gemessen am 28.09.2026 auf github.com: Abfragekosten 6 → 8 Punkte pro Abruf.
+    public static let checkContextLimit = 50
+
     public static let query = """
     query {
       viewer { login }
@@ -15,8 +20,15 @@ public enum GitHubAPI {
     }
     fragment pr on PullRequest {
       number title url repository { nameWithOwner } isDraft reviewDecision
-      author { login }
-      commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+      createdAt additions deletions changedFiles mergeable
+      author { login ... on User { name } }
+      commits(last: 1) { nodes { commit { statusCheckRollup {
+        state
+        contexts(first: \(checkContextLimit)) {
+          totalCount
+          nodes { __typename ... on CheckRun { status conclusion } ... on StatusContext { state } }
+        }
+      } } } }
       reviewRequests(first: 20) {
         nodes { asCodeOwner requestedReviewer { __typename ... on User { login } ... on Team { name } } }
       }
@@ -48,11 +60,87 @@ public enum GitHubAPI {
                                                                       viewerLogin: viewerLogin)
         // Unbekannte/neue Enum-Werte decodiert Node.reviewDecision schon als nil (RawRepresentable-
         // Init schlägt fehl) – hier bleibt nur das Zusammenführen mit "Feld fehlt ganz".
+        let rollup = n.commits?.nodes.last??.commit.statusCheckRollup
         return PullRequest(number: number, title: title, repository: n.repository?.nameWithOwner ?? "",
                            url: url, ciFailing: state == "FAILURE" || state == "ERROR",
                            isDraft: n.isDraft ?? false, reviewDecision: n.reviewDecision?.value,
                            hasCodeOwnerRequestForMe: hasCodeOwner, hasExtraRequestForMe: hasExtra,
-                           hasForeignApprovalOrChangesRequested: hasForeignDecision)
+                           hasForeignApprovalOrChangesRequested: hasForeignDecision,
+                           createdAt: n.createdAt?.value.flatMap(parseDate),
+                           additions: n.additions?.value, deletions: n.deletions?.value,
+                           changedFiles: n.changedFiles?.value,
+                           mergeable: n.mergeable?.value.flatMap(Mergeable.init(rawValue:)),
+                           authorLogin: n.author?.login, authorName: n.author?.name?.value.flatMap(nonEmpty),
+                           checks: rollup?.contexts?.value.map(checkSummary),
+                           reviews: reviewSummaries(n.reviews, authorLogin: n.author?.login))
+    }
+
+    private static func nonEmpty(_ s: String) -> String? {
+        let t = s.trimmingCharacters(in: .whitespaces)
+        return t.isEmpty ? nil : t
+    }
+
+    /// GitHub liefert `DateTime` als ISO 8601, mit oder (üblich) ohne Sekundenbruchteile.
+    static func parseDate(_ string: String) -> Date? {
+        let plain = ISO8601DateFormatter()
+        if let d = plain.date(from: string) { return d }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: string)
+    }
+
+    /// Zählt grüne und rote Checks. `CheckRun`: erst ab `status == COMPLETED` zählt `conclusion`
+    /// (SUCCESS/NEUTRAL/SKIPPED grün; FAILURE/TIMED_OUT/CANCELLED/ACTION_REQUIRED/STARTUP_FAILURE
+    /// rot). `StatusContext`: SUCCESS grün, FAILURE/ERROR rot. Alles andere – laufend, wartend,
+    /// STALE, unbekannte künftige Werte – bleibt als `other` sichtbar, statt verworfen zu werden.
+    private static func checkSummary(_ contexts: Contexts) -> CheckSummary {
+        var passed = 0, failed = 0
+        let nodes = contexts.nodes?.compactMap { $0 } ?? []
+        for node in nodes {
+            switch classify(node) {
+            case .passed: passed += 1
+            case .failed: failed += 1
+            case .other: break
+            }
+        }
+        let total = max(contexts.totalCount ?? nodes.count, passed + failed)
+        return CheckSummary(total: total, passed: passed, failed: failed)
+    }
+
+    private enum CheckOutcome { case passed, failed, other }
+
+    private static func classify(_ node: ContextNode) -> CheckOutcome {
+        switch node.typename {
+        case "CheckRun":
+            guard node.status == "COMPLETED" else { return .other }
+            switch node.conclusion {
+            case "SUCCESS", "NEUTRAL", "SKIPPED": return .passed
+            case "FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE": return .failed
+            default: return .other
+            }
+        case "StatusContext":
+            switch node.state {
+            case "SUCCESS": return .passed
+            case "FAILURE", "ERROR": return .failed
+            default: return .other
+            }
+        default:
+            return .other
+        }
+    }
+
+    /// Letzter Zustand je Reviewer, ohne den PR-Autor (Selbst-Kommentare sind kein Review) und
+    /// ohne Reviews unbekannter Autoren oder mit unbekanntem Zustand.
+    private static func reviewSummaries(_ reviews: Reviews?, authorLogin: String?) -> [ReviewSummary] {
+        var order: [String] = []
+        var latest: [String: ReviewSummary.State] = [:]
+        for review in reviews?.nodes.compactMap({ $0 }) ?? [] {
+            guard let login = review.author?.login, login != authorLogin,
+                  let raw = review.state, let state = ReviewSummary.State(rawValue: raw) else { continue }
+            if latest[login] == nil { order.append(login) }
+            latest[login] = state
+        }
+        return order.compactMap { login in latest[login].map { ReviewSummary(login: login, state: $0) } }
     }
 
     /// Wertet `reviewRequests` aus: eine Anfrage betrifft mich, wenn `requestedReviewer` ein User
@@ -107,6 +195,18 @@ public enum GitHubAPI {
         let author: UserRef?
         let reviewRequests: ReviewRequests?
         let reviews: Reviews?
+        // Detailfelder (status-display#24): tolerant decodiert, ein unerwarteter Typ wird zu nil
+        // statt den ganzen Knoten (oder gar die ganze Antwort) zu verwerfen.
+        let createdAt: Lenient<String>?
+        let additions: Lenient<Int>?
+        let deletions: Lenient<Int>?
+        let changedFiles: Lenient<Int>?
+        let mergeable: Lenient<String>?
+    }
+    /// Decodiert `T` oder – bei falschem Typ – nil, ohne zu werfen.
+    private struct Lenient<T: Decodable>: Decodable {
+        let value: T?
+        init(from decoder: Decoder) throws { value = try? decoder.singleValueContainer().decode(T.self) }
     }
     /// Decodiert `reviewDecision` verlustfrei-tolerant: ein unbekannter String (künftiger
     /// GraphQL-Enum-Wert) wird zu `value == nil` statt den ganzen PR-Knoten zu verwerfen.
@@ -117,12 +217,23 @@ public enum GitHubAPI {
             value = ReviewDecision(rawValue: raw)
         }
     }
-    private struct UserRef: Decodable { let login: String }
+    private struct UserRef: Decodable { let login: String; let name: Lenient<String>? }
     private struct Repo: Decodable { let nameWithOwner: String }
     private struct Commits: Decodable { let nodes: [CommitNode?] }
     private struct CommitNode: Decodable { let commit: Commit }
     private struct Commit: Decodable { let statusCheckRollup: Rollup? }
-    private struct Rollup: Decodable { let state: String }
+    private struct Rollup: Decodable { let state: String; let contexts: Lenient<Contexts>? }
+    private struct Contexts: Decodable { let totalCount: Int?; let nodes: [ContextNode?]? }
+    /// `StatusCheckRollupContext` ist ein Union aus `CheckRun` (`status`/`conclusion`) und
+    /// `StatusContext` (`state`); alle Felder optional und als String, damit neue Enum-Werte
+    /// nichts kaputt machen.
+    private struct ContextNode: Decodable {
+        let typename: String?
+        let status: String?
+        let conclusion: String?
+        let state: String?
+        enum CodingKeys: String, CodingKey { case typename = "__typename", status, conclusion, state }
+    }
     private struct ReviewRequests: Decodable { let nodes: [ReviewRequestNode?] }
     private struct ReviewRequestNode: Decodable { let asCodeOwner: Bool?; let requestedReviewer: RequestedReviewer? }
     /// `RequestedReviewer` ist ein GraphQL-Union (`User`/`Team`/`Mannequin`); `name` gilt nur für
