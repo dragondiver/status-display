@@ -10,12 +10,19 @@ struct SettingsView: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var ghPathText = ""
     @State private var portText = ""
+    @State private var repoHost = ""
+    @State private var repoSearch = ""
+    @State private var repoCatalog: [String] = []
+    @State private var repoCatalogFetchedAt: Date?
+    @State private var repoLoading = false
+    @State private var repoError: String?
 
     var body: some View {
         TabView {
             general.tabItem { Text("Allgemein") }
             statusTab.tabItem { Text("Status") }
             agentsTab.tabItem { Text("Agenten") }
+            reposTab.tabItem { Text("Repos") }
         }
         .frame(width: 620, height: 520)
         .padding()
@@ -23,6 +30,8 @@ struct SettingsView: View {
             presets = model.presets
             ghPathText = model.settings.ghPath
             portText = String(model.settings.port)
+            if repoHost.isEmpty { repoHost = model.settings.hosts.first ?? "" }
+            loadCachedRepos()
             NSApp.activate()
         }
     }
@@ -125,6 +134,112 @@ struct SettingsView: View {
                 snippet("MCP (Copilot u. a.) – Eintrag in der MCP-Konfiguration",
                         HookSnippets.mcpJSON(port: model.settings.port, token: model.token))
             }
+        }
+    }
+
+    // MARK: Repos
+
+    private var reposTab: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Host")
+                Picker("", selection: $repoHost) {
+                    ForEach(model.settings.hosts, id: \.self) { Text($0).tag($0) }
+                }
+                .labelsHidden()
+                .frame(width: 220)
+                .onChange(of: repoHost) { _, _ in loadCachedRepos() }
+                Spacer()
+                if let repoCatalogFetchedAt {
+                    Text("Stand \(repoCatalogFetchedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Button(repoLoading ? "Lädt …" : "Repos neu laden") { Task { await reloadRepos() } }
+                    .disabled(repoLoading || repoHost.isEmpty)
+            }
+
+            if let repoError {
+                Text(repoError).foregroundStyle(.red).font(.caption)
+            }
+
+            if !pinnedForHost.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Angeheftet").font(.headline)
+                    ForEach(pinnedForHost, id: \.self) { name in
+                        repoRow(name: name)
+                    }
+                }
+                Divider()
+            }
+
+            TextField("Suche (owner/repo)", text: $repoSearch)
+
+            let filtered = RepoSelection.filter(repoCatalog, query: repoSearch)
+            if filtered.count > RepoSelection.displayLimit {
+                Text("Zeige die ersten \(RepoSelection.displayLimit) von \(filtered.count) Treffern – Suche eingrenzen.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            List(filtered.prefix(RepoSelection.displayLimit), id: \.self) { name in
+                repoRow(name: name)
+            }
+        }
+        .padding()
+    }
+
+    /// Angeheftete Repos des gewählten Hosts, unabhängig von der Suche, damit man sie ohne
+    /// Suchen findet.
+    private var pinnedForHost: [String] {
+        model.settings.pinnedRepos.compactMap { RepoSelection.repository(forKey: $0, host: repoHost) }.sorted()
+    }
+
+    private func repoRow(name: String) -> some View {
+        let key = "\(repoHost)/\(name)"
+        return HStack {
+            Text(name)
+            Spacer()
+            Picker("", selection: Binding(
+                get: { RepoSelection.state(for: key, pinned: model.settings.pinnedRepos, hidden: model.settings.hiddenRepos) },
+                set: { newState in
+                    let updated = RepoSelection.setState(newState, for: key, pinned: model.settings.pinnedRepos,
+                                                         hidden: model.settings.hiddenRepos)
+                    model.settings.pinnedRepos = updated.pinned
+                    model.settings.hiddenRepos = updated.hidden
+                }
+            )) {
+                Text("normal").tag(RepoState.normal)
+                Text("angeheftet").tag(RepoState.pinned)
+                Text("ausgeblendet").tag(RepoState.hidden)
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 260)
+        }
+    }
+
+    private func loadCachedRepos() {
+        repoError = nil
+        guard !repoHost.isEmpty, let cache = model.cachedRepoCatalog(host: repoHost) else {
+            repoCatalog = []
+            repoCatalogFetchedAt = nil
+            return
+        }
+        repoCatalog = cache.repos
+        repoCatalogFetchedAt = cache.fetchedAt
+    }
+
+    private func reloadRepos() async {
+        guard !repoHost.isEmpty else { return }
+        repoLoading = true
+        repoError = nil
+        let result = await model.reloadRepoCatalog(host: repoHost)
+        repoLoading = false
+        switch result {
+        case .success(let cache):
+            repoCatalog = cache.repos
+            repoCatalogFetchedAt = cache.fetchedAt
+        case .failure(let error):
+            repoError = error.message
         }
     }
 

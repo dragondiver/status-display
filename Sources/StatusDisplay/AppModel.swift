@@ -101,6 +101,28 @@ final class AppModel: ObservableObject {
         refreshLocal()
     }
 
+    /// Zwischengespeicherte Repo-Liste eines Hosts (ohne Netzwerkzugriff), für den Reiter „Repos“.
+    func cachedRepoCatalog(host: String) -> RepoCache? {
+        support.readRepoCache(host: host)
+    }
+
+    /// Lädt die Repo-Liste eines Hosts frisch von GitHub (seitenweise, siehe `RepoCatalogService`)
+    /// und schreibt sie in den Cache. Wird nur auf Knopfdruck („Repos neu laden“) aufgerufen, nicht
+    /// bei jedem Öffnen der Einstellungen.
+    func reloadRepoCatalog(host: String) async -> Result<RepoCache, GitHubError> {
+        let service = RepoCatalogService(tokens: GHCLITokenProvider(customPath: settings.ghPath))
+        do {
+            let repos = try await service.fetch(host: host)
+            let cache = RepoCache(repos: repos, fetchedAt: Date())
+            try? support.writeRepoCache(cache, host: host)
+            return .success(cache)
+        } catch let error as GitHubError {
+            return .failure(error)
+        } catch {
+            return .failure(.http(0))
+        }
+    }
+
     func regenerateToken() {
         // Erst das neue Token erzeugen; der alte Server (der mit dem alten Token noch funktioniert)
         // wird nur bei Erfolg gestoppt. Sonst würde ein Fehlschlag den Server tot zurücklassen.
@@ -260,6 +282,11 @@ final class AppModel: ObservableObject {
         if old.brightness != settings.brightness { display.setBrightness(settings.brightness) }
         if old.hosts != settings.hosts || old.ghPath != settings.ghPath {
             Task { await refreshPRs() }
+        }
+        // Angeheftet/ausgeblendet wirkt nur auf die Zeilenbildung aus bereits vorhandenen
+        // Snapshots (PRAggregator.zone) – dafür reicht ein Neu-Rendern, kein neuer GitHub-Abruf.
+        if old.pinnedRepos != settings.pinnedRepos || old.hiddenRepos != settings.hiddenRepos {
+            scheduleRender()
         }
     }
 }

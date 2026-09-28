@@ -54,4 +54,22 @@ final class AppSupportTests: XCTestCase {
         XCTAssertNil(s.readEndpoint())
         XCTAssertFalse(FileManager.default.fileExists(atPath: s.endpointURL.path))
     }
+
+    func testRepoCacheRoundTripIsPerHost() throws {
+        let s = temp()
+        XCTAssertNil(s.readRepoCache(host: "github.com"))
+        let fetchedAt = Date(timeIntervalSince1970: 1_790_000_000)
+        try s.writeRepoCache(RepoCache(repos: ["a/b", "a/c"], fetchedAt: fetchedAt), host: "github.com")
+        XCTAssertNil(s.readRepoCache(host: "ghe.firma.de")) // anderer Host, eigene Datei
+        let loaded = s.readRepoCache(host: "github.com")
+        XCTAssertEqual(loaded?.repos, ["a/b", "a/c"])
+        XCTAssertEqual(loaded?.fetchedAt, fetchedAt)
+    }
+
+    func testRepoCacheOverwritesPreviousValue() throws {
+        let s = temp()
+        try s.writeRepoCache(RepoCache(repos: ["a/b"], fetchedAt: Date(timeIntervalSince1970: 1)), host: "github.com")
+        try s.writeRepoCache(RepoCache(repos: ["a/b", "a/c"], fetchedAt: Date(timeIntervalSince1970: 2)), host: "github.com")
+        XCTAssertEqual(s.readRepoCache(host: "github.com")?.repos, ["a/b", "a/c"])
+    }
 }

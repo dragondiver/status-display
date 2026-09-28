@@ -6,6 +6,14 @@ public struct Endpoint: Codable, Equatable {
     public init(port: UInt16) { self.port = port }
 }
 
+/// Lokal zwischengespeicherte Repo-Liste eines Hosts (Einstellungs-Reiter „Repos“, #15) mit
+/// Ladezeitpunkt, damit die UI „Stand …“ anzeigen kann statt bei jedem Öffnen neu zu laden.
+public struct RepoCache: Codable, Equatable {
+    public var repos: [String]
+    public var fetchedAt: Date
+    public init(repos: [String], fetchedAt: Date) { self.repos = repos; self.fetchedAt = fetchedAt }
+}
+
 /// Token und Port in ~/Library/Application Support/status-display, gelesen von App und Hook-Befehl.
 public struct AppSupport {
     public let directory: URL
@@ -69,6 +77,21 @@ public struct AppSupport {
 
     public func readEndpoint() -> Endpoint? {
         (try? Data(contentsOf: endpointURL)).flatMap { try? JSONDecoder().decode(Endpoint.self, from: $0) }
+    }
+
+    /// Eine Datei je Host: `host` besteht laut `AppSettings.normalizedHost` nur aus
+    /// Kleinbuchstaben, Ziffern, `-` und `.` und ist damit als Dateinamensteil unbedenklich.
+    public func repoCacheURL(host: String) -> URL {
+        directory.appendingPathComponent("repos-\(host).json")
+    }
+
+    public func writeRepoCache(_ cache: RepoCache, host: String) throws {
+        try ensureDirectory()
+        try JSONEncoder().encode(cache).write(to: repoCacheURL(host: host), options: .atomic)
+    }
+
+    public func readRepoCache(host: String) -> RepoCache? {
+        (try? Data(contentsOf: repoCacheURL(host: host))).flatMap { try? JSONDecoder().decode(RepoCache.self, from: $0) }
     }
 
     private func ensureDirectory() throws {
