@@ -9,6 +9,8 @@ case "display-test":
     exit(CLI.displayTest())
 case "preview":
     exit(CLI.preview(arguments.dropFirst().first))
+case "preview-window":
+    exit(CLI.previewWindow(Array(arguments.dropFirst())))
 case "hook":
     exit(CLI.hook(arguments.dropFirst().first))
 default:

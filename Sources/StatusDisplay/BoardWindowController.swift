@@ -1,18 +1,20 @@
 import AppKit
 import CoreGraphics
 import StatusCore
-import SwiftUI
 
-/// Eigenständiges Fenster mit exakt dem Bild, das ans AKP02 geht (status-display#23) – für Kollegen
-/// ohne eigenes Display. Bewusst ein reines `NSWindow` statt einer SwiftUI-`Window`-Scene: nur so
-/// lassen sich Seitenverhältnis (`contentAspectRatio`), „immer im Vordergrund“ (`window.level`) und
-/// eine gemerkte Position/Größe (`setFrameAutosaveName`) direkt steuern, ohne die LSUIElement-App zu
-/// einer Dock-Präsenz zu zwingen – das hängt an der Activation Policy aus `Info.plist`, nicht daran,
-/// ob ein `NSWindow` offen ist.
+/// Eigenständiges Fenster mit dem Board (status-display#23) – für Kollegen ohne eigenes Display.
+/// Bewusst ein reines `NSWindow` statt einer SwiftUI-`Window`-Scene: nur so lassen sich
+/// „immer im Vordergrund“ (`window.level`) und eine gemerkte Position/Größe (`setFrameAutosaveName`)
+/// direkt steuern, ohne die LSUIElement-App zu einer Dock-Präsenz zu zwingen – das hängt an der
+/// Activation Policy aus `Info.plist`, nicht daran, ob ein `NSWindow` offen ist.
 ///
-/// Klick auf die Statuszone (linke 480 von 1920 px des Bilds) öffnet dasselbe Status-Menü wie die
-/// Menüleiste und das Dashboard-Etikett (Entscheidung Florian, 28.09.2026, status-display#33) –
-/// über `StatusMenuFactory`, damit keine dritte Kopie der Einträge entsteht.
+/// Seit status-display#38 zeigt das Fenster nicht mehr das herunterskalierte 1920×462-Bild des AKP02,
+/// sondern zeichnet selbst in Fenstergröße (`BoardWindowView` → `BoardWindowRenderer`, feste
+/// Punktgrößen, kein festes Seitenverhältnis). Das AKP02 behält seinen eigenen Renderpfad.
+///
+/// Klick auf die Statuszone öffnet dasselbe Status-Menü wie die Menüleiste und das Dashboard-Etikett
+/// (Entscheidung Florian, 28.09.2026, status-display#33) – über `StatusMenuFactory`, damit keine
+/// dritte Kopie der Einträge entsteht.
 @MainActor
 final class BoardWindowController: NSObject, NSWindowDelegate {
     /// Aufgerufen, wenn der Nutzer das Fenster selbst schließt (Fenster-Schließknopf/⌘W) – nicht,
@@ -20,7 +22,9 @@ final class BoardWindowController: NSObject, NSWindowDelegate {
     var onUserClosed: (() -> Void)?
 
     private let model: AppModel
-    private let content = BoardWindowContent.Model()
+    /// Letzter Board-Zustand; auch ohne Fenster gemerkt, damit ein später erzeugtes Fenster gleich
+    /// den aktuellen Stand zeigt.
+    private var state: BoardState?
     /// Das Fenster entsteht erst in `show` (status-display#36): `AppModel` lebt als `@StateObject`
     /// und wird mitten in SwiftUIs Scene-Instanziierung erzeugt – ein dabei angelegtes Fenster
     /// layoutet seinen `NSHostingView` synchron und bringt auf macOS 26 den SwiftUI-Graph zum Absturz.
@@ -57,9 +61,12 @@ final class BoardWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Legt das Bild nur im Anzeige-Modell ab, das es auch ohne Fenster gibt; ein später erzeugtes
-    /// Fenster zeigt so gleich das letzte Bild.
-    func update(image: CGImage?) { content.image = image }
+    /// Merkt den Zustand und zeichnet ein vorhandenes Fenster neu; erzeugt nie eins. Aufgerufen aus
+    /// `AppModel.scheduleRender`, also höchstens zweimal pro Sekunde.
+    func update(state: BoardState) {
+        self.state = state
+        window.ifExists { ($0.contentView as? BoardWindowView)?.state = state }
+    }
 
     /// Merkt den Wert und wendet ihn auf ein vorhandenes Fenster an; sonst erst beim Erzeugen.
     func setAlwaysOnTop(_ on: Bool) {
@@ -70,25 +77,24 @@ final class BoardWindowController: NSObject, NSWindowDelegate {
     private static func level(alwaysOnTop: Bool) -> NSWindow.Level { alwaysOnTop ? .floating : .normal }
 
     private func makeWindow() -> NSWindow {
-        let aspectWidth: CGFloat = 1920
-        let aspectHeight: CGFloat = 462
-        let initialWidth: CGFloat = 960
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: initialWidth, height: initialWidth * aspectHeight / aspectWidth),
-                            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                            backing: .buffered, defer: false)
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 130),
+                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                           backing: .buffered, defer: false)
         win.title = "Board"
-        win.contentAspectRatio = NSSize(width: aspectWidth, height: aspectHeight)
-        win.minSize = NSSize(width: 320, height: 320 * aspectHeight / aspectWidth)
+        // Kein festes Seitenverhältnis mehr (status-display#38); die Mindestgröße hält Statusname und
+        // Uhr auseinander und lässt Platz für vier Tabellenzeilen.
+        win.contentMinSize = BoardWindowLayout.minimumSize
         win.isReleasedWhenClosed = false
         win.delegate = self
         win.level = Self.level(alwaysOnTop: alwaysOnTop)
         // Merkt Position/Größe zwischen Starts (AppKit-eigener Mechanismus, keine eigene Ablage nötig).
         // Bewusst vor `contentView` (status-display#36): das Wiederherstellen der gemerkten Größe
-        // passiert so, bevor ein `NSHostingView` im Fenster hängt, und löst kein SwiftUI-Layout aus.
+        // passiert so, bevor die Ansicht im Fenster hängt.
         win.setFrameAutosaveName("BoardWindow")
-        win.contentView = NSHostingView(rootView: BoardWindowContent(model: content, onStatusZoneClick: { [weak self] point, view in
-            self?.openStatusMenu(at: point, in: view)
-        }))
+        let view = BoardWindowView()
+        view.state = state
+        view.onStatusZoneClick = { [weak self] point, view in self?.openStatusMenu(at: point, in: view) }
+        win.contentView = view
         return win
     }
 
@@ -103,66 +109,54 @@ final class BoardWindowController: NSObject, NSWindowDelegate {
     }
 }
 
-/// Reine Anzeige des zuletzt gerenderten Board-Bilds – exakt das `CGImage`, das `AppModel` auch als
-/// JPEG ans AKP02 schickt (kein zweites Rendern). Ein transparenter Overlay (`BoardStatusZoneOverlay`)
-/// darüber erkennt Klicks/Mausposition in der Statuszone (status-display#33).
-struct BoardWindowContent: View {
-    @MainActor
-    final class Model: ObservableObject {
-        @Published var image: CGImage?
+/// Zeichnet das Board in der Größe der Ansicht (status-display#38) – direkt per CoreGraphics in
+/// den Kontext von `draw(_:)`, der auf Retina schon in Backing-Pixeln auflöst, also scharf und ohne
+/// Zwischenbild. Erkennt außerdem per `BoardWindowStatusZone` (StatusCore, reine Geometrie), ob
+/// Mausposition/Klick in der Statuszone liegen, zeigt dort den Zeigehand-Cursor und öffnet bei Klick
+/// das Status-Menü (status-display#33). Gespiegelt, damit Ursprung oben links liegt wie im Layout.
+final class BoardWindowView: NSView {
+    var state: BoardState? {
+        didSet { if state != oldValue { needsDisplay = true } }
     }
-
-    @ObservedObject var model: Model
-    let onStatusZoneClick: (CGPoint, NSView) -> Void
-
-    var body: some View {
-        GeometryReader { _ in
-            ZStack {
-                if let image = model.image {
-                    Image(decorative: image, scale: 1)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    Color.black
-                }
-                BoardStatusZoneOverlayView(onClick: onStatusZoneClick)
-            }
-        }
-        .background(Color.black)
-        .ignoresSafeArea()
-    }
-}
-
-/// SwiftUI-Brücke zum AppKit-Overlay, das die eigentliche Hit-Test-/Cursor-Logik trägt.
-private struct BoardStatusZoneOverlayView: NSViewRepresentable {
-    let onClick: (CGPoint, NSView) -> Void
-
-    func makeNSView(context: Context) -> BoardStatusZoneOverlay {
-        let view = BoardStatusZoneOverlay()
-        view.onClick = onClick
-        return view
-    }
-
-    func updateNSView(_ nsView: BoardStatusZoneOverlay, context: Context) {
-        nsView.onClick = onClick
-    }
-}
-
-/// Transparente `NSView`, die über dem Board-Bild liegt: erkennt per `BoardWindowStatusZone`
-/// (StatusCore, reine Geometrie), ob Mausposition/Klick in der Statuszone liegen, zeigt dort den
-/// Zeigehand-Cursor und öffnet bei Klick das Status-Menü an der Klickposition. Punkte werden dafür
-/// in Ursprung-oben-links umgerechnet, wie `BoardWindowStatusZone` es erwartet.
-final class BoardStatusZoneOverlay: NSView {
-    var onClick: ((CGPoint, NSView) -> Void)?
+    var onStatusZoneClick: ((CGPoint, NSView) -> Void)?
     private var trackingArea: NSTrackingArea?
 
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        layerContentsRedrawPolicy = .duringViewResize
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) wird nicht benutzt") }
+
     override var isFlipped: Bool { true }
+    override var isOpaque: Bool { true }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsDisplay = true
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        guard let state else {
+            ctx.setFillColor(NSColor.black.cgColor)
+            ctx.fill(bounds)
+            return
+        }
+        BoardWindowRenderer.draw(state, size: bounds.size, in: ctx)
+    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let trackingArea { removeTrackingArea(trackingArea) }
-        let area = NSTrackingArea(rect: bounds, options: [.activeInKeyWindow, .mouseMoved, .cursorUpdate], owner: self, userInfo: nil)
+        let area = NSTrackingArea(rect: bounds, options: [.activeInKeyWindow, .mouseMoved, .cursorUpdate, .inVisibleRect],
+                                  owner: self, userInfo: nil)
         trackingArea = area
         addTrackingArea(area)
     }
@@ -176,22 +170,16 @@ final class BoardStatusZoneOverlay: NSView {
         }
     }
 
+    override func mouseMoved(with event: NSEvent) {
+        cursorUpdate(with: event)
+    }
+
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         guard BoardWindowStatusZone.isStatusZone(clickPoint: point, viewSize: bounds.size) else {
             super.mouseDown(with: event)
             return
         }
-        onClick?(point, self)
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        // Nur innerhalb der Statuszone Ereignisse abfangen – außerhalb soll das Fenster (Verschieben,
-        // Größenänderung am Rand etc.) unbeeinflusst bleiben.
-        let local = convert(point, from: superview)
-        guard bounds.contains(local), BoardWindowStatusZone.isStatusZone(clickPoint: local, viewSize: bounds.size) else {
-            return nil
-        }
-        return super.hitTest(point)
+        onStatusZoneClick?(point, self)
     }
 }
