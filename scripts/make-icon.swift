@@ -23,7 +23,10 @@
 // (Apple-Konvention: Inhalt ca. 824x824 von 1024, zentriert, Eckradius
 // ca. 185 bei 1024 statt rx=40 bei 180). Wir zeichnen daher auf einem
 // 1024er Referenzraster, skalieren das 180er-Motiv auf 824x824 und
-// zentrieren es mit ca. 100pt Rand auf jeder Seite.
+// zentrieren es mit ca. 100pt Rand auf jeder Seite. Die Fläche außerhalb
+// des abgerundeten Quadrats bleibt transparent (nicht bis zum Rand
+// deckend gefüllt) — sonst wirkt das Icon im Dock größer als seine
+// Nachbarn.
 
 import CoreGraphics
 import Foundation
@@ -58,8 +61,10 @@ func drawIcon(in ctx: CGContext, pixels: CGFloat) {
     ctx.saveGState()
     ctx.scaleBy(x: pixelScale, y: pixelScale)
 
-    // Hintergrund: abgerundetes Quadrat mit Apple-typischem Rand.
-    let bgRect = CGRect(x: 0, y: 0, width: fullCanvas, height: fullCanvas)
+    // Hintergrund: abgerundetes Quadrat, zentriert mit Apple-typischem Rand.
+    // Ausserhalb des Quadrats bleibt die Flaeche transparent (Dock setzt
+    // sonst ein zu grosses Icon gegenueber den Nachbar-Icons).
+    let bgRect = CGRect(x: contentInset, y: contentInset, width: contentSize, height: contentSize)
     let bgPath = CGPath(roundedRect: bgRect, cornerWidth: fullCornerRadius, cornerHeight: fullCornerRadius, transform: nil)
     ctx.addPath(bgPath)
     ctx.setFillColor(colorBackground)
