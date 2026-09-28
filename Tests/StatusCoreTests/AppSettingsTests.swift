@@ -141,4 +141,32 @@ final class AppSettingsTests: XCTestCase {
                                            shown: s.shownRepos, hostDefaults: s.hostDefaults), .normal,
                        "explizit shown sticht weiterhin den ausgeblendeten Host-Standard")
     }
+
+    // MARK: Board-Fenster (Issue #23)
+
+    func testBoardWindowDefaults() {
+        XCTAssertEqual(AppSettings().boardWindowMode, .automatic)
+        XCTAssertEqual(AppSettings().boardWindowAlwaysOnTop, false)
+    }
+
+    func testBoardWindowSettingsRoundTrip() {
+        let d = UserDefaults(suiteName: "AppSettingsTests-\(UUID().uuidString)")!
+        var s = AppSettings()
+        s.boardWindowMode = .always
+        s.boardWindowAlwaysOnTop = true
+        s.save(to: d)
+        XCTAssertEqual(AppSettings.load(from: d), s)
+    }
+
+    /// Vor Issue #23 gespeicherte Einstellungen kennen `boardWindowMode`/`boardWindowAlwaysOnTop`
+    /// noch nicht: das Dekodieren darf nicht scheitern, fehlende Schlüssel fallen auf die Defaults
+    /// zurück (automatisch, nicht immer im Vordergrund).
+    func testMissingBoardWindowKeysDecodeToDefaults() throws {
+        let json = """
+        {"hosts":["github.com"],"brightness":60,"port":47615,"ghPath":""}
+        """
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.boardWindowMode, .automatic)
+        XCTAssertEqual(decoded.boardWindowAlwaysOnTop, false)
+    }
 }

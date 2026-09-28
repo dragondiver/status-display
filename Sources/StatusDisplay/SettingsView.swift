@@ -77,6 +77,18 @@ struct SettingsView: View {
                     Text("Helligkeit \(model.settings.brightness) %")
                 }
             }
+            Section("Board-Fenster") {
+                Picker("Anzeigen", selection: Binding(get: { model.settings.boardWindowMode },
+                                                       set: { model.settings.boardWindowMode = $0 })) {
+                    Text("Automatisch").tag(BoardWindowMode.automatic)
+                    Text("Immer").tag(BoardWindowMode.always)
+                    Text("Nie").tag(BoardWindowMode.never)
+                }
+                Text("Automatisch: sichtbar, solange kein AKP02 verbunden ist.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("Immer im Vordergrund", isOn: Binding(get: { model.settings.boardWindowAlwaysOnTop },
+                                                              set: { model.settings.boardWindowAlwaysOnTop = $0 }))
+            }
             Section("Start") {
                 Toggle("Bei Anmeldung starten", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, on in
