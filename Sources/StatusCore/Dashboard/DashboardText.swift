@@ -3,6 +3,10 @@ import Foundation
 /// Texte für Liste und Detailspalte des Dashboard-Fensters (status-display#24). Reine Funktionen,
 /// damit Formulierungen und Grenzfälle (fehlende Felder) ohne UI testbar sind.
 public enum DashboardText {
+    /// Leerzustand des Agenten-Abschnitts der Seitenleiste, grau statt Sammel-Eintrag mit 0
+    /// (Entscheidung Florian, 28.09.2026, status-display#39).
+    public static let noActiveAgents = "Keine aktiven Agenten"
+
     /// Kurzes Alter für die Liste: „12 min“, „3 h“, „2 T“.
     public static func shortAge(from start: Date, now: Date) -> String {
         let minutes = max(0, Int(now.timeIntervalSince(start) / 60))

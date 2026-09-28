@@ -1,13 +1,14 @@
 import Foundation
 
-/// Die fünf Bereiche der linken Spalte im Dashboard-Fenster (status-display#24, Entwurf B).
-/// `rawValue` ist zugleich die Ziffer des Tastaturkürzels (⌘1–⌘5).
+/// Die vier Bereiche der linken Spalte im Dashboard-Fenster (status-display#24, Entwurf B;
+/// status-display#39: Agenten sind kein Sammel-Bereich mehr, sondern ein eigener Abschnitt mit
+/// einer Zeile je Agent in der Seitenleiste – siehe `Dashboard.agents`).
+/// `rawValue` ist zugleich die Ziffer des Tastaturkürzels (⌘1–⌘4).
 public enum DashboardSection: Int, CaseIterable, Identifiable, Equatable {
     case waiting = 1
     case codeOwner = 2
     case mine = 3
-    case agents = 4
-    case approved = 5
+    case approved = 4
 
     public var id: Int { rawValue }
 
@@ -16,12 +17,11 @@ public enum DashboardSection: Int, CaseIterable, Identifiable, Equatable {
         case .waiting: return "Wartet auf dich"
         case .codeOwner: return "Code-Owner-Reviews"
         case .mine: return "Deine PRs"
-        case .agents: return "Agenten"
         case .approved: return "Schon freigegeben"
         }
     }
 
-    /// ⌘1–⌘5 → Bereich; andere Ziffern → nil.
+    /// ⌘1–⌘4 → Bereich; andere Ziffern → nil.
     public init?(shortcutNumber: Int) { self.init(rawValue: shortcutNumber) }
 }
 
@@ -64,6 +64,12 @@ public enum DashboardTag: String, Equatable, CaseIterable {
         case .agentStale: return "unklar"
         }
     }
+}
+
+/// Farbklasse des Zustandspunkts vor einem Eintrag (Liste, Detail, Agenten-Zeilen der
+/// Seitenleiste). Nie das einzige Signal – daneben steht immer ein Text-Etikett.
+public enum DashboardMarkKind: Equatable {
+    case waiting, error, neutral
 }
 
 public struct DashboardItem: Identifiable, Equatable {
@@ -111,6 +117,15 @@ public struct DashboardItem: Identifiable, Equatable {
     /// Orange Markierung: Extra-Anfrage oder wartender Agent.
     public var isWaitingForMe: Bool { urgency == .extraRequest || urgency == .agentWaiting }
 
+    /// Farbe des Zustandspunkts vor einem Eintrag – Liste, Detail und die Agenten-Zeilen der
+    /// Seitenleiste (status-display#39) nutzen dieselbe Regel, statt sie je Ansicht zu wiederholen.
+    public var markKind: DashboardMarkKind {
+        if isWaitingForMe { return .waiting }
+        if tags.contains(.ciFailing) || tags.contains(.agentError) { return .error }
+        if urgency == .ownActionNeeded { return .waiting }
+        return .neutral
+    }
+
     /// Dringlichkeit, dann Alter (älteste zuerst – wer am längsten wartet, kommt zuerst dran),
     /// Einträge ohne Datum hinten, zuletzt die `id` für eine stabile Reihenfolge.
     static func precedes(_ l: DashboardItem, _ r: DashboardItem) -> Bool {
@@ -141,17 +156,21 @@ public struct DashboardRepo: Identifiable, Equatable {
 }
 
 /// Reine Logik hinter dem Dashboard-Fenster (status-display#24): baut aus PR-Snapshots, der
-/// Sichtbarkeitsregel des `PRAggregator` und den Agenten die Listen der fünf Bereiche, die
-/// Repo-Liste und den Leerzustand. Keine UI, kein Netzwerk – vollständig testbar.
+/// Sichtbarkeitsregel des `PRAggregator` und den Agenten die Listen der vier PR-Bereiche, die
+/// Agenten-Liste, die Repo-Liste und den Leerzustand. Keine UI, kein Netzwerk – vollständig
+/// testbar.
 ///
-/// Regeln (Entscheidung Florian, 28.09.2026, status-display#24):
+/// Regeln (Entscheidung Florian, 28.09.2026, status-display#24 und status-display#39):
 /// - **Wartet auf dich**: Extra-Anfragen an mich (`needsMyReview && hasExtraRequestForMe`),
 ///   Agenten im Zustand *wartet*, eigene PRs mit roter CI (nur Nicht-Draft, wie
 ///   `PRSnapshot.ciFailingCount`) oder `reviewDecision == CHANGES_REQUESTED` (auch als Draft –
 ///   angeforderte Änderungen gelten unabhängig vom Draft-Status).
 /// - **Code-Owner-Reviews**: `needsMyReview` ohne Extra-Anfrage (die stehen schon oben).
 /// - **Deine PRs**: alle eigenen offenen PRs, auch die schon unter „Wartet auf dich“.
-/// - **Agenten**: alle Agenten aus `AgentRegistry.snapshot()`.
+/// - **Agenten**: alle Agenten aus `AgentRegistry.snapshot()`, sortiert wie auf dem Display
+///   (wartet → Fehler → läuft → unklar → fertig). Kein eigener `DashboardSection`-Fall mehr –
+///   die Seitenleiste zeigt jeden Agenten einzeln (status-display#39), statt sie als Sammel-Eintrag
+///   in die vier PR-Bereiche einzureihen.
 /// - **Schon freigegeben**: Review-Anfragen mit `needsMyReview == false`.
 /// - Ausgeblendete Repos (`PRAggregator.isHidden`) erscheinen in keinem Bereich und keiner
 ///   Repo-Zeile. Ihre offenen Review-Anfragen stehen – wie im Menü und auf dem Board – gesammelt
@@ -178,10 +197,13 @@ public struct Dashboard: Equatable {
         case .waiting: return waiting
         case .codeOwner: return codeOwner
         case .mine: return mine
-        case .agents: return agents
         case .approved: return approved
         }
     }
+
+    /// Der einzelne Agent für die Detailansicht eines Agenten-Eintrags der Seitenleiste
+    /// (status-display#39). `nil`, wenn er inzwischen verschwunden ist (z. B. TTL abgelaufen).
+    public func agentItem(id: String) -> DashboardItem? { agents.first { $0.id == id } }
 
     public func count(_ section: DashboardSection) -> Int { items(in: section).count }
 
