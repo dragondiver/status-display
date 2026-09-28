@@ -19,7 +19,10 @@ final class PRAggregatorTests: XCTestCase {
                             mine: [pr(2, repository: "f/telefon-ai", failing: true)], fetchedAt: t0))
         a.record(PRSnapshot(host: "ghe", toReview: [pr(3, repository: "f/rundfunk"), pr(4, repository: "f/rundfunk")],
                             mine: [], fetchedAt: t0.addingTimeInterval(60)))
-        let z = a.zone(now: t0.addingTimeInterval(100), hosts: ["github.com", "ghe"])
+        // "ghe" ist per Host-Standard ausgeblendet (nur github.com ist normal, #19) – hier
+        // ausdrücklich auf normal gesetzt, weil dieser Test die Zeilenbildung über beide Hosts
+        // prüft, nicht das Ausblenden.
+        let z = a.zone(now: t0.addingTimeInterval(100), hosts: ["github.com", "ghe"], hostDefaults: ["ghe": .normal])
         XCTAssertEqual(z.ciFailingCount, 1)
         XCTAssertEqual(z.lastSuccess, t0)
         XCTAssertFalse(z.isStale)
@@ -27,7 +30,8 @@ final class PRAggregatorTests: XCTestCase {
             PRRow(repoKey: "ghe/f/rundfunk", repository: "rundfunk", toReview: 2, mine: 0, ciFailing: false),
             PRRow(repoKey: "github.com/f/telefon-ai", repository: "telefon-ai", toReview: 1, mine: 1, ciFailing: true),
         ])
-        XCTAssertTrue(a.zone(now: t0.addingTimeInterval(361), hosts: ["github.com", "ghe"]).isStale)
+        XCTAssertTrue(a.zone(now: t0.addingTimeInterval(361), hosts: ["github.com", "ghe"],
+                             hostDefaults: ["ghe": .normal]).isStale)
     }
 
     func testErrorKeepsLastSnapshotAndRecoveryClearsError() {
@@ -110,8 +114,71 @@ final class PRAggregatorTests: XCTestCase {
         a.record(PRSnapshot(host: "github.com", toReview: [pr(1, repository: "f/rundfunk")], mine: [], fetchedAt: t0))
         a.record(PRSnapshot(host: "ghe.firma.de", toReview: [pr(2, repository: "f/rundfunk")], mine: [],
                             fetchedAt: t0))
-        let z = a.zone(now: t0, hosts: ["github.com", "ghe.firma.de"])
+        let z = a.zone(now: t0, hosts: ["github.com", "ghe.firma.de"], hostDefaults: ["ghe.firma.de": .normal])
         XCTAssertEqual(Set(z.rows.map(\.repoKey)), ["github.com/f/rundfunk", "ghe.firma.de/f/rundfunk"])
         XCTAssertEqual(z.rows.count, 2, "gleicher Repo-Name auf zwei Hosts bleibt getrennt")
+    }
+
+    // MARK: Host-Standard und Hinweiszeile (Issue #19)
+
+    /// Ohne jeden expliziten Eintrag ist ein Repo auf einem Nicht-github.com-Host ausgeblendet
+    /// (Host-Standard) – wie ein explizit ausgeblendetes Repo verschwindet es aus `rows`.
+    func testRepoOnNonGitHubHostHiddenByDefault() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "ghe.firma.de", toReview: [pr(1, repository: "f/rundfunk")], mine: [],
+                            fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["ghe.firma.de"])
+        XCTAssertTrue(z.rows.isEmpty, "ghe.firma.de ist ohne hostDefaults-Eintrag ausgeblendet")
+    }
+
+    /// `shownRepos` stellt ein einzelnes Repo trotz ausgeblendetem Host-Standard wieder normal.
+    func testShownRepoOverridesHiddenHostDefault() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "ghe.firma.de", toReview: [pr(1, repository: "f/rundfunk")], mine: [],
+                            fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["ghe.firma.de"], shown: ["ghe.firma.de/f/rundfunk"])
+        XCTAssertEqual(z.rows.map(\.repository), ["rundfunk"])
+    }
+
+    /// Review-Requests in ausgeblendeten Repos (hier per Host-Standard) landen in `hiddenReviews`,
+    /// nicht in `rows` – eigene offene PRs aus demselben Repo zählen dort nicht mit.
+    func testHiddenReviewsCollectsOnlyReviewRequestsFromHiddenRepos() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "ghe.firma.de",
+                            toReview: [pr(1, repository: "f/rundfunk"), pr(2, repository: "f/rundfunk")],
+                            mine: [pr(3, repository: "f/rundfunk")], fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["ghe.firma.de"])
+        XCTAssertTrue(z.rows.isEmpty)
+        XCTAssertEqual(z.hiddenReviews.map(\.number), [1, 2], "eigener offener PR #3 zählt nicht mit")
+    }
+
+    /// Explizit ausgeblendete Repos tragen ebenfalls zu `hiddenReviews` bei, nicht nur
+    /// Host-Standard-Fälle.
+    func testHiddenReviewsIncludesExplicitlyHiddenRepos() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "github.com", toReview: [pr(1, repository: "f/rundfunk")], mine: [],
+                            fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["github.com"], hidden: ["github.com/f/rundfunk"])
+        XCTAssertEqual(z.hiddenReviews.map(\.number), [1])
+    }
+
+    /// Ohne ausgeblendete Review-Requests bleibt `hiddenReviews` leer – die Hinweiszeile erscheint
+    /// nur bei N > 0 (geprüft in der Menü-/Board-Darstellung anhand dieser leeren Liste).
+    func testHiddenReviewsEmptyWhenNothingIsHidden() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "github.com", toReview: [pr(1, repository: "f/rundfunk")], mine: [],
+                            fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["github.com"])
+        XCTAssertTrue(z.hiddenReviews.isEmpty)
+    }
+
+    /// Ein angeheftetes Repo erscheint trotz ausgeblendetem Host-Standard normal in `rows` (Pin
+    /// sticht den Host-Standard).
+    func testPinnedRepoIgnoresHiddenHostDefault() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "ghe.firma.de", toReview: [], mine: [], fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["ghe.firma.de"], pinned: ["ghe.firma.de/f/heim-agent"])
+        XCTAssertEqual(z.rows.map(\.repoKey), ["ghe.firma.de/f/heim-agent"])
+        XCTAssertTrue(z.hiddenReviews.isEmpty)
     }
 }

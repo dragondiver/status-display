@@ -16,6 +16,8 @@ struct SettingsView: View {
     @State private var repoCatalogFetchedAt: Date?
     @State private var repoLoading = false
     @State private var repoError: String?
+    /// Sammelaktion im Reiter „Repos“, zwischen Klick und Bestätigung im `confirmationDialog`.
+    @State private var pendingBulkAction: (state: RepoState, names: [String])?
 
     var body: some View {
         TabView {
@@ -59,8 +61,8 @@ struct SettingsView: View {
                 HStack {
                     TextField("z. B. ghe.firma.de", text: $newHost)
                     Button("Hinzufügen") {
-                        if let h = AppSettings.normalizedHost(newHost), !model.settings.hosts.contains(h) {
-                            model.settings.hosts.append(h)
+                        if let h = AppSettings.normalizedHost(newHost) {
+                            model.settings.addHost(h)
                         }
                         newHost = ""
                     }
@@ -162,6 +164,24 @@ struct SettingsView: View {
                 Text(repoError).foregroundStyle(.red).font(.caption)
             }
 
+            // Standard für Repos ohne eigenen Eintrag in pinnedRepos/hiddenRepos/shownRepos
+            // (Entscheidung Florian, 28.09.2026, status-display#19): github.com normal, andere
+            // Hosts ausgeblendet – hier pro Host umschaltbar.
+            HStack {
+                Text("Nicht eingestellte Repos:").font(.caption).foregroundStyle(.secondary)
+                Picker("", selection: Binding(
+                    get: { hostDefault },
+                    set: { model.settings.setHostDefault($0, for: repoHost) }
+                )) {
+                    Text("normal").tag(RepoDefault.normal)
+                    Text("ausgeblendet").tag(RepoDefault.hidden)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 220)
+                .disabled(repoHost.isEmpty)
+            }
+
             if !pinnedForHost.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Angeheftet").font(.headline)
@@ -179,12 +199,27 @@ struct SettingsView: View {
                 Text("Zeige die ersten \(RepoSelection.displayLimit) von \(filtered.count) Treffern – Suche eingrenzen.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            HStack {
+                Text("Alle \(filtered.count) Treffer:").font(.caption).foregroundStyle(.secondary)
+                ForEach([RepoState.normal, .pinned, .hidden], id: \.self) { state in
+                    Button(label(for: state)) { pendingBulkAction = (state, filtered) }
+                }
+            }
+            .disabled(filtered.isEmpty)
 
             List(filtered.prefix(RepoSelection.displayLimit), id: \.self) { name in
                 repoRow(name: name)
             }
         }
         .padding()
+        .confirmationDialog(bulkConfirmationTitle, isPresented: bulkConfirmationPresented, titleVisibility: .visible) {
+            Button(bulkConfirmationTitle) {
+                guard let pendingBulkAction else { return }
+                applyBulk(pendingBulkAction.state, to: pendingBulkAction.names)
+                self.pendingBulkAction = nil
+            }
+            Button("Abbrechen", role: .cancel) { pendingBulkAction = nil }
+        }
     }
 
     /// Angeheftete Repos des gewählten Hosts, unabhängig von der Suche, damit man sie ohne
@@ -193,18 +228,56 @@ struct SettingsView: View {
         model.settings.pinnedRepos.compactMap { RepoSelection.repository(forKey: $0, host: repoHost) }.sorted()
     }
 
+    private var hostDefault: RepoDefault {
+        RepoSelection.hostDefault(for: repoHost, hostDefaults: model.settings.hostDefaults)
+    }
+
+    private func label(for state: RepoState) -> String {
+        switch state {
+        case .normal: return "normal"
+        case .pinned: return "anheften"
+        case .hidden: return "ausblenden"
+        }
+    }
+
+    private var bulkConfirmationTitle: String {
+        guard let pendingBulkAction else { return "" }
+        return "\(pendingBulkAction.names.count) Repos auf „\(label(for: pendingBulkAction.state))“ setzen?"
+    }
+
+    private var bulkConfirmationPresented: Binding<Bool> {
+        Binding(get: { pendingBulkAction != nil }, set: { if !$0 { pendingBulkAction = nil } })
+    }
+
+    private func applyBulk(_ state: RepoState, to names: [String]) {
+        let updated = RepoSelection.setStateForAll(state, names: names, host: repoHost,
+                                                    pinned: model.settings.pinnedRepos,
+                                                    hidden: model.settings.hiddenRepos,
+                                                    shown: model.settings.shownRepos,
+                                                    hostDefaults: model.settings.hostDefaults)
+        model.settings.pinnedRepos = updated.pinned
+        model.settings.hiddenRepos = updated.hidden
+        model.settings.shownRepos = updated.shown
+    }
+
     private func repoRow(name: String) -> some View {
         let key = "\(repoHost)/\(name)"
         return HStack {
             Text(name)
             Spacer()
             Picker("", selection: Binding(
-                get: { RepoSelection.state(for: key, pinned: model.settings.pinnedRepos, hidden: model.settings.hiddenRepos) },
+                get: { RepoSelection.state(for: key, host: repoHost, pinned: model.settings.pinnedRepos,
+                                           hidden: model.settings.hiddenRepos, shown: model.settings.shownRepos,
+                                           hostDefaults: model.settings.hostDefaults) },
                 set: { newState in
-                    let updated = RepoSelection.setState(newState, for: key, pinned: model.settings.pinnedRepos,
-                                                         hidden: model.settings.hiddenRepos)
+                    let updated = RepoSelection.setState(newState, for: key, host: repoHost,
+                                                         pinned: model.settings.pinnedRepos,
+                                                         hidden: model.settings.hiddenRepos,
+                                                         shown: model.settings.shownRepos,
+                                                         hostDefaults: model.settings.hostDefaults)
                     model.settings.pinnedRepos = updated.pinned
                     model.settings.hiddenRepos = updated.hidden
+                    model.settings.shownRepos = updated.shown
                 }
             )) {
                 Text("normal").tag(RepoState.normal)

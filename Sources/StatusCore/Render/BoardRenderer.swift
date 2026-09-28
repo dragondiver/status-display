@@ -93,7 +93,7 @@ public enum BoardRenderer {
             text(ctx, "?", x: x0, baseline: 250, size: 110, bold: true, color: grey)
             return
         }
-        guard !z.rows.isEmpty else {
+        guard !z.rows.isEmpty || !z.hiddenReviews.isEmpty else {
             text(ctx, "keine PRs", x: x0, baseline: 200, size: 40, color: muted)
             return
         }
@@ -102,7 +102,7 @@ public enum BoardRenderer {
         text(ctx, "Review", x: x0 + prToReviewColumn, baseline: 110, size: 24, color: muted)
         text(ctx, "Offen", x: x0 + prMineColumn, baseline: 110, size: 24, color: muted)
 
-        let (rows, more) = BoardText.visiblePRRows(z.rows)
+        let (rows, more, hiddenHint) = BoardText.visiblePRRows(z.rows, hiddenReviewCount: z.hiddenReviews.count)
         var baseline: CGFloat = 165
         for row in rows {
             if row.ciFailing {
@@ -117,6 +117,12 @@ public enum BoardRenderer {
         }
         if more > 0 {
             text(ctx, "+\(more) weitere", x: x0 + prRepoColumn, baseline: baseline, size: 32, color: muted)
+            baseline += 55
+        }
+        // Immer als letzte Zeile, nie durch „+N weitere“ verdeckt oder abgeschnitten
+        // (`BoardText.visiblePRRows` reserviert dafür einen eigenen Platz).
+        if let hiddenHint {
+            text(ctx, hiddenHint, x: x0 + prRepoColumn, baseline: baseline, size: 32, color: grey)
         }
     }
 

@@ -66,9 +66,20 @@ extension CLI {
             PRRow(repoKey: "github.com/florianhuber/claude-konventionen", repository: "claude-konventionen",
                   toReview: 0, mine: 1, ciFailing: false),
         ]
+        // Beispiel für die Hinweiszeile „Ausgeblendet · N zu reviewen“ (Issue #19): Review-Requests
+        // aus einem ausgeblendeten Repo, z. B. per Host-Standard auf einem GHE-Host.
+        let hiddenReviews = [
+            PullRequest(number: 12, title: "Migration abschließen", repository: "florianhuber/internal-tools",
+                        url: URL(string: "https://ghe.firma.de/florianhuber/internal-tools/pull/12")!,
+                        ciFailing: false),
+            PullRequest(number: 8, title: "Log-Rotation fixen", repository: "florianhuber/internal-tools",
+                        url: URL(string: "https://ghe.firma.de/florianhuber/internal-tools/pull/8")!,
+                        ciFailing: false),
+        ]
         let state = BoardState(statusName: "Deep Focus", statusColor: RGBColor(hex: "#B3263E")!,
                                statusSince: now.addingTimeInterval(-47 * 60), agents: agents,
-                               prs: PRZone(rows: rows, ciFailingCount: 1, lastSuccess: now, isStale: false),
+                               prs: PRZone(rows: rows, ciFailingCount: 1, lastSuccess: now, isStale: false,
+                                          hiddenReviews: hiddenReviews),
                                now: now)
         do {
             try PanelImage.png(BoardRenderer.render(state)).write(to: URL(fileURLWithPath: path))
