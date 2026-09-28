@@ -21,7 +21,12 @@ final class BoardWindowController: NSObject, NSWindowDelegate {
 
     private let model: AppModel
     private let content = BoardWindowContent.Model()
-    private lazy var window: NSWindow = makeWindow()
+    /// Das Fenster entsteht erst in `show` (status-display#36): `AppModel` lebt als `@StateObject`
+    /// und wird mitten in SwiftUIs Scene-Instanziierung erzeugt – ein dabei angelegtes Fenster
+    /// layoutet seinen `NSHostingView` synchron und bringt auf macOS 26 den SwiftUI-Graph zum Absturz.
+    private lazy var window = DeferredWindow { [unowned self] in self.makeWindow() }
+    /// Gemerkt, damit `setAlwaysOnTop` vor dem ersten `show` kein Fenster erzeugen muss.
+    private var alwaysOnTop = false
     private var isSettingUpClose = false
 
     init(model: AppModel) {
@@ -33,6 +38,7 @@ final class BoardWindowController: NSObject, NSWindowDelegate {
     /// Menüpunkt-Klick); beim automatischen Erscheinen (Display getrennt) soll die App dem Nutzer
     /// nicht den Fokus wegnehmen, deshalb dort `false`.
     func show(activate: Bool) {
+        let window = window.materialize()
         if activate {
             NSApp.activate()
             window.makeKeyAndOrderFront(nil)
@@ -41,16 +47,27 @@ final class BoardWindowController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Wirkt nur auf ein bereits erzeugtes Fenster; ein nie gezeigtes bleibt ungeboren.
     func hide() {
-        guard window.isVisible else { return }
-        isSettingUpClose = true
-        window.orderOut(nil)
-        isSettingUpClose = false
+        window.ifExists { window in
+            guard window.isVisible else { return }
+            isSettingUpClose = true
+            window.orderOut(nil)
+            isSettingUpClose = false
+        }
     }
 
+    /// Legt das Bild nur im Anzeige-Modell ab, das es auch ohne Fenster gibt; ein später erzeugtes
+    /// Fenster zeigt so gleich das letzte Bild.
     func update(image: CGImage?) { content.image = image }
 
-    func setAlwaysOnTop(_ on: Bool) { window.level = on ? .floating : .normal }
+    /// Merkt den Wert und wendet ihn auf ein vorhandenes Fenster an; sonst erst beim Erzeugen.
+    func setAlwaysOnTop(_ on: Bool) {
+        alwaysOnTop = on
+        window.ifExists { $0.level = Self.level(alwaysOnTop: on) }
+    }
+
+    private static func level(alwaysOnTop: Bool) -> NSWindow.Level { alwaysOnTop ? .floating : .normal }
 
     private func makeWindow() -> NSWindow {
         let aspectWidth: CGFloat = 1920
@@ -64,11 +81,14 @@ final class BoardWindowController: NSObject, NSWindowDelegate {
         win.minSize = NSSize(width: 320, height: 320 * aspectHeight / aspectWidth)
         win.isReleasedWhenClosed = false
         win.delegate = self
+        win.level = Self.level(alwaysOnTop: alwaysOnTop)
+        // Merkt Position/Größe zwischen Starts (AppKit-eigener Mechanismus, keine eigene Ablage nötig).
+        // Bewusst vor `contentView` (status-display#36): das Wiederherstellen der gemerkten Größe
+        // passiert so, bevor ein `NSHostingView` im Fenster hängt, und löst kein SwiftUI-Layout aus.
+        win.setFrameAutosaveName("BoardWindow")
         win.contentView = NSHostingView(rootView: BoardWindowContent(model: content, onStatusZoneClick: { [weak self] point, view in
             self?.openStatusMenu(at: point, in: view)
         }))
-        // Merkt Position/Größe zwischen Starts (AppKit-eigener Mechanismus, keine eigene Ablage nötig).
-        win.setFrameAutosaveName("BoardWindow")
         return win
     }
 

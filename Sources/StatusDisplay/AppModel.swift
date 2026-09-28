@@ -50,6 +50,9 @@ final class AppModel: ObservableObject {
     static let reconnectMinInterval: TimeInterval = 5
     private lazy var boardWindowController: BoardWindowController = {
         let c = BoardWindowController(model: self)
+        // Hier statt in `init` (status-display#36): `init` läuft mitten in SwiftUIs
+        // Scene-Instanziierung und soll den Controller gar nicht erst anfassen.
+        c.setAlwaysOnTop(settings.boardWindowAlwaysOnTop)
         c.onUserClosed = { [weak self] in Task { @MainActor in self?.boardWindowClosedByUser() } }
         return c
     }()
@@ -109,7 +112,10 @@ final class AppModel: ObservableObject {
         refreshLocal()
         Task { await refreshPRs() }
 
-        boardWindowController.setAlwaysOnTop(settings.boardWindowAlwaysOnTop)
+        // Kein Fenster-Controller hier (status-display#36): `AppModel` ist ein `@StateObject` und wird
+        // mitten in SwiftUIs Scene-Instanziierung erzeugt; ein dabei angelegtes Fenster brachte auf
+        // macOS 26 den SwiftUI-Graph zum Absturz. Always-on-top setzt der Controller selbst, sobald
+        // er gebraucht wird.
         // Neu auswerten, sobald die Start-Karenz vorbei ist: erst dann darf „Automatisch“ das
         // Fenster wegen eines fehlenden Displays öffnen (siehe `BoardWindowVisibility.startupGrace`).
         Task { @MainActor [weak self] in
@@ -403,7 +409,12 @@ final class AppModel: ObservableObject {
             || old.shownRepos != settings.shownRepos || old.hostDefaults != settings.hostDefaults {
             scheduleRender()
         }
-        if old.boardWindowMode != settings.boardWindowMode { updateBoardWindowVisibility() }
+        if old.boardWindowMode != settings.boardWindowMode {
+            // Die Einstellung kommt über ein SwiftUI-Binding (Picker in `SettingsView`). Das Fenster
+            // dabei ggf. erst erzeugen und layouten, aber nicht synchron im Setter, sondern im
+            // nächsten Main-Loop-Durchlauf – außerhalb jedes SwiftUI-Updates (status-display#36).
+            DispatchQueue.main.async { [weak self] in self?.updateBoardWindowVisibility() }
+        }
         if old.boardWindowAlwaysOnTop != settings.boardWindowAlwaysOnTop {
             boardWindowController.setAlwaysOnTop(settings.boardWindowAlwaysOnTop)
         }
