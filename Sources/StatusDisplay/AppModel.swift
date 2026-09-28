@@ -13,6 +13,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var displayState: DisplayController.State = .disconnected
     @Published private(set) var serverState: HTTPServer.State = .stopped
     @Published private(set) var token = ""
+    /// Zuletzt gerendertes Board-Bild, vor dem JPEG-Encoding – fürs Board-Fenster (status-display#23),
+    /// dasselbe `CGImage`, das auch ans AKP02 geht, ohne ein zweites Mal zu rendern.
+    @Published private(set) var renderedBoardImage: CGImage?
+    /// Ob das Board-Fenster aktuell sichtbar sein soll (siehe `updateBoardWindowVisibility`).
+    @Published private(set) var boardWindowVisible = false
     /// Rückgabe von IOHIDManagerOpen, falls der HID-Zugriff scheiterte (sonst nil).
     @Published private(set) var hidOpenError: IOReturn?
     @Published var settings: AppSettings {
@@ -33,6 +38,17 @@ final class AppModel: ObservableObject {
     private var reconnectScheduled = false
     private var lastReconnect: Date?
     static let reconnectMinInterval: TimeInterval = 5
+    private lazy var boardWindowController: BoardWindowController = {
+        let c = BoardWindowController()
+        c.onUserClosed = { [weak self] in Task { @MainActor in self?.boardWindowClosedByUser() } }
+        return c
+    }()
+    /// Vom Menüpunkt „Board-Fenster anzeigen“ gesetzt; hält das Fenster unter „Automatisch“ offen,
+    /// auch wenn das Display danach verbindet (siehe `BoardWindowVisibility`).
+    private var boardWindowManuallyOpened = false
+    /// Zeitpunkt des App-Starts, für die Start-Karenz in `BoardWindowVisibility.shouldShow`: das
+    /// Display gilt beim Start zunächst als „nicht verbunden“, bis IOKit sich meldet.
+    private let startupTime = Date()
 
     init() {
         let settings = AppSettings.load()
@@ -43,7 +59,12 @@ final class AppModel: ObservableObject {
         knownPresets.value = Set(presets.map(\.id))
 
         // Callbacks kommen auf dem Main-Thread an; Task @MainActor macht das für den Compiler explizit.
-        display.onStateChange = { [weak self] state in Task { @MainActor in self?.displayState = state } }
+        display.onStateChange = { [weak self] state in
+            Task { @MainActor in
+                self?.displayState = state
+                self?.updateBoardWindowVisibility()
+            }
+        }
         transport.onConnect = { [weak self] writer in Task { @MainActor in self?.display.attach(writer) } }
         transport.onDisconnect = { [weak self] in Task { @MainActor in self?.display.detach() } }
         display.onWriteFailure = { [weak self] in Task { @MainActor in self?.scheduleReconnect() } }
@@ -72,6 +93,14 @@ final class AppModel: ObservableObject {
         }
         refreshLocal()
         Task { await refreshPRs() }
+
+        boardWindowController.setAlwaysOnTop(settings.boardWindowAlwaysOnTop)
+        // Neu auswerten, sobald die Start-Karenz vorbei ist: erst dann darf „Automatisch“ das
+        // Fenster wegen eines fehlenden Displays öffnen (siehe `BoardWindowVisibility.startupGrace`).
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(BoardWindowVisibility.startupGrace))
+            self?.updateBoardWindowVisibility()
+        }
     }
 
     var hasWaitingAgent: Bool { agents.contains { $0.state == .waiting } }
@@ -121,6 +150,13 @@ final class AppModel: ObservableObject {
         } catch {
             return .failure(.http(0))
         }
+    }
+
+    /// Menüpunkt „Board-Fenster anzeigen“ – öffnet das Fenster sofort und hält es unter
+    /// „Automatisch“ offen, bis der Nutzer es selbst schließt (siehe `BoardWindowVisibility`).
+    func showBoardWindow() {
+        boardWindowManuallyOpened = true
+        updateBoardWindowVisibility(activate: true)
     }
 
     func regenerateToken() {
@@ -216,8 +252,45 @@ final class AppModel: ObservableObject {
                                                 pinned: settings.pinnedRepos, hidden: settings.hiddenRepos,
                                                 shown: settings.shownRepos, hostDefaults: settings.hostDefaults),
                                    now: now)
-            display.show(jpeg: PanelImage.encode(landscape: BoardRenderer.render(state)))
+            let image = BoardRenderer.render(state)
+            self.renderedBoardImage = image
+            self.boardWindowController.update(image: image)
+            self.display.show(jpeg: PanelImage.encode(landscape: image))
         }
+    }
+
+    /// Wertet die Einstellung „Board-Fenster“ (Automatisch/Immer/Nie) gegen den aktuellen
+    /// Display-Zustand aus und zeigt/versteckt das Fenster entsprechend. Wird bei jedem Ereignis
+    /// aufgerufen, das das Ergebnis ändern kann (Display verbunden/getrennt, Einstellung geändert,
+    /// Ablauf der Start-Karenz) – nicht als Dauer-Poller, damit ein vom Nutzer geschlossenes
+    /// Fenster nicht sofort wieder aufspringt (siehe `boardWindowClosedByUser`).
+    private func updateBoardWindowVisibility(activate: Bool = false) {
+        let inGrace = Date().timeIntervalSince(startupTime) < BoardWindowVisibility.startupGrace
+        let shouldShow = BoardWindowVisibility.shouldShow(mode: settings.boardWindowMode,
+                                                           displayConnected: displayState == .connected,
+                                                           inStartupGrace: inGrace,
+                                                           manuallyOpened: boardWindowManuallyOpened)
+        guard shouldShow else {
+            if boardWindowVisible {
+                boardWindowVisible = false
+                boardWindowController.hide()
+            }
+            return
+        }
+        boardWindowVisible = true
+        // `activate` auch aufrufen, wenn das Fenster schon sichtbar ist: ein erneuter Klick auf
+        // „Board-Fenster anzeigen“ soll es dann trotzdem nach vorne holen.
+        boardWindowController.show(activate: activate)
+    }
+
+    /// Der Nutzer hat das Fenster selbst geschlossen (Titelleiste/⌘W). Absichtlich ohne erneuten
+    /// Aufruf von `updateBoardWindowVisibility()`: unter „Automatisch“ bei getrenntem Display wäre
+    /// die Bedingung sofort wieder erfüllt, und das Fenster würde dem Nutzer vor der Nase wieder
+    /// aufspringen. Es bleibt zu, bis das nächste echte Ereignis eintritt (Display verbindet/trennt
+    /// erneut, Einstellung ändert sich, oder der Nutzer öffnet es wieder über den Menüpunkt).
+    private func boardWindowClosedByUser() {
+        boardWindowManuallyOpened = false
+        boardWindowVisible = false
     }
 
     /// Trennt `onStateChange` der alten Instanz, bevor sie gestoppt wird: sonst kann ihr
@@ -290,6 +363,10 @@ final class AppModel: ObservableObject {
         if old.pinnedRepos != settings.pinnedRepos || old.hiddenRepos != settings.hiddenRepos
             || old.shownRepos != settings.shownRepos || old.hostDefaults != settings.hostDefaults {
             scheduleRender()
+        }
+        if old.boardWindowMode != settings.boardWindowMode { updateBoardWindowVisibility() }
+        if old.boardWindowAlwaysOnTop != settings.boardWindowAlwaysOnTop {
+            boardWindowController.setAlwaysOnTop(settings.boardWindowAlwaysOnTop)
         }
     }
 }

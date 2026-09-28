@@ -23,11 +23,17 @@ public struct AppSettings: Codable, Equatable {
     /// (siehe `init(from:)`); siehe `RepoSelection.hostDefault(for:hostDefaults:)` für die Regel,
     /// die dabei angewendet wird.
     public var hostDefaults: [String: RepoDefault] = [:]
+    /// Sichtbarkeit des Board-Fensters (status-display#23). Standard „automatisch“: sichtbar,
+    /// solange kein AKP02 verbunden ist.
+    public var boardWindowMode: BoardWindowMode = .automatic
+    /// „Immer im Vordergrund“-Schalter für das Board-Fenster (status-display#23).
+    public var boardWindowAlwaysOnTop = false
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case hosts, brightness, port, ghPath, pinnedRepos, hiddenRepos, shownRepos, hostDefaults
+        case hosts, brightness, port, ghPath, pinnedRepos, hiddenRepos, shownRepos, hostDefaults,
+             boardWindowMode, boardWindowAlwaysOnTop
     }
 
     // Handgeschrieben statt synthetisiert: Felder, die es in gespeicherten Einstellungen noch
@@ -56,6 +62,10 @@ public struct AppSettings: Codable, Equatable {
                 (host, RepoDefault.hidden)
             })
         }
+        boardWindowMode = try c.decodeIfPresent(BoardWindowMode.self, forKey: .boardWindowMode)
+            ?? AppSettings().boardWindowMode
+        boardWindowAlwaysOnTop = try c.decodeIfPresent(Bool.self, forKey: .boardWindowAlwaysOnTop)
+            ?? AppSettings().boardWindowAlwaysOnTop
     }
 
     private static let key = "settings"
