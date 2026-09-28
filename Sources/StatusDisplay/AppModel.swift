@@ -44,6 +44,9 @@ final class AppModel: ObservableObject {
     private var prsRefreshPending = false
     private var reconnectScheduled = false
     private var lastReconnect: Date?
+    /// Für `EndpointOwnership`: nur eine `endpoint.json` entfernen, die diese Instanz selbst
+    /// geschrieben hat (status-display#27).
+    private let ownPid = ProcessInfo.processInfo.processIdentifier
     static let reconnectMinInterval: TimeInterval = 5
     private lazy var boardWindowController: BoardWindowController = {
         let c = BoardWindowController()
@@ -99,9 +102,9 @@ final class AppModel: ObservableObject {
             }
         }
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
-                                               queue: .main) { [weak self] _ in
+                                               queue: .main) { [weak self, ownPid] _ in
             // Synchron: nach dieser Benachrichtigung endet der Prozess, ein Task käme nicht mehr dran.
-            MainActor.assumeIsolated { self?.support.removeEndpoint() }
+            MainActor.assumeIsolated { self?.support.removeEndpointIfOwn(ownPid: ownPid) }
         }
         refreshLocal()
         Task { await refreshPRs() }
@@ -336,14 +339,14 @@ final class AppModel: ObservableObject {
         server?.onStateChange = nil
         server?.stop()
         server = nil
-        support.removeEndpoint() // bis der nächste Server `.ready` meldet, gehört der Port nicht mehr uns
+        support.removeEndpointIfOwn(ownPid: ownPid) // bis der nächste Server `.ready` meldet, gehört der Port nicht mehr uns
     }
 
     private func startServer() {
         do {
             token = try support.loadOrCreateToken()
         } catch {
-            support.removeEndpoint()
+            support.removeEndpointIfOwn(ownPid: ownPid)
             serverState = .failed("Token: \(error.localizedDescription)")
             return
         }
@@ -364,12 +367,12 @@ final class AppModel: ObservableObject {
                 // und die veraltete Meldung darf `serverState`/`endpoint.json` nicht mehr anfassen.
                 guard let self, let s, self.server === s else { return }
                 self.serverState = state
-                if case .failed = state { self.support.removeEndpoint() }
+                if case .failed = state { self.support.removeEndpointIfOwn(ownPid: self.ownPid) }
                 if state == .ready {
                     do {
-                        try self.support.writeEndpoint(Endpoint(port: port))
+                        try self.support.writeEndpoint(Endpoint(port: port, pid: self.ownPid))
                     } catch {
-                        self.support.removeEndpoint()
+                        self.support.removeEndpointIfOwn(ownPid: self.ownPid)
                         self.serverState = .failed("endpoint.json konnte nicht geschrieben werden: \(error.localizedDescription)")
                     }
                 }
@@ -379,7 +382,7 @@ final class AppModel: ObservableObject {
             try s.start()
             server = s
         } catch {
-            support.removeEndpoint()
+            support.removeEndpointIfOwn(ownPid: ownPid)
             serverState = .failed(error.localizedDescription)
         }
     }

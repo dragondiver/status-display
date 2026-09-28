@@ -55,6 +55,52 @@ final class AppSupportTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: s.endpointURL.path))
     }
 
+    func testEndpointDecodesPid() throws {
+        let s = temp()
+        try s.writeEndpoint(Endpoint(port: 47615, pid: 4242))
+        XCTAssertEqual(s.readEndpoint(), Endpoint(port: 47615, pid: 4242))
+    }
+
+    /// Eine `endpoint.json` von vor #27 hat kein `pid`-Feld – muss trotzdem decodierbar bleiben,
+    /// der Hook-Befehl liest ohnehin nur `port`.
+    func testEndpointDecodesWithoutPidField() throws {
+        let s = temp()
+        try FileManager.default.createDirectory(at: s.directory, withIntermediateDirectories: true)
+        try Data(#"{"port":47615}"#.utf8).write(to: s.endpointURL)
+        XCTAssertEqual(s.readEndpoint(), Endpoint(port: 47615, pid: nil))
+    }
+
+    /// status-display#27: eine zweite Instanz, die auf `.failed` läuft, darf die `endpoint.json`
+    /// der laufenden Instanz nicht löschen, weil deren PID nicht die eigene ist.
+    func testRemoveEndpointIfOwnKeepsForeignPid() throws {
+        let s = temp()
+        try s.writeEndpoint(Endpoint(port: 47615, pid: 111))
+        s.removeEndpointIfOwn(ownPid: 222)
+        XCTAssertEqual(s.readEndpoint(), Endpoint(port: 47615, pid: 111))
+    }
+
+    func testRemoveEndpointIfOwnRemovesOwnPid() throws {
+        let s = temp()
+        try s.writeEndpoint(Endpoint(port: 47615, pid: 111))
+        s.removeEndpointIfOwn(ownPid: 111)
+        XCTAssertNil(s.readEndpoint())
+    }
+
+    /// Alte Datei ohne PID: gehört niemandem nachweislich, bleibt unangetastet statt entfernt zu
+    /// werden.
+    func testRemoveEndpointIfOwnKeepsFileWithoutPid() throws {
+        let s = temp()
+        try s.writeEndpoint(Endpoint(port: 47615))
+        s.removeEndpointIfOwn(ownPid: 111)
+        XCTAssertEqual(s.readEndpoint(), Endpoint(port: 47615))
+    }
+
+    func testRemoveEndpointIfOwnOnMissingFileIsNoop() {
+        let s = temp()
+        s.removeEndpointIfOwn(ownPid: 111) // fehlt: kein Fehler
+        XCTAssertNil(s.readEndpoint())
+    }
+
     func testRepoCacheRoundTripIsPerHost() throws {
         let s = temp()
         XCTAssertNil(s.readRepoCache(host: "github.com"))

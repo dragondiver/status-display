@@ -12,5 +12,8 @@ case "preview":
 case "hook":
     exit(CLI.hook(arguments.dropFirst().first))
 default:
+    // Nur beim eigentlichen App-Start prüfen (status-display#27), nicht bei den Unterbefehlen
+    // oben – die sollen parallel zu einer laufenden App funktionieren.
+    CLI.enforceSingleInstance()
     StatusDisplayApp.main()
 }
