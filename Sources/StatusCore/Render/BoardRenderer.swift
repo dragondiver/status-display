@@ -155,7 +155,8 @@ public enum BoardRenderer {
 
     // MARK: Hilfen
 
-    private static func stateColor(_ a: AgentActivity) -> RGBColor {
+    /// Auch vom Board-Fenster (`BoardWindowRenderer`) genutzt – gleiche Farbregeln wie auf dem Display.
+    static func stateColor(_ a: AgentActivity) -> RGBColor {
         if a.isStale { return grey }
         switch a.state {
         case .running: return green

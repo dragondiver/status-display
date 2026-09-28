@@ -13,9 +13,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var displayState: DisplayController.State = .disconnected
     @Published private(set) var serverState: HTTPServer.State = .stopped
     @Published private(set) var token = ""
-    /// Zuletzt gerendertes Board-Bild, vor dem JPEG-Encoding – fürs Board-Fenster (status-display#23),
-    /// dasselbe `CGImage`, das auch ans AKP02 geht, ohne ein zweites Mal zu rendern.
-    @Published private(set) var renderedBoardImage: CGImage?
     /// Ob das Board-Fenster aktuell sichtbar sein soll (siehe `updateBoardWindowVisibility`).
     @Published private(set) var boardWindowVisible = false {
         didSet { updateActivationPolicy() }
@@ -297,9 +294,10 @@ final class AppModel: ObservableObject {
                                                 pinned: settings.pinnedRepos, hidden: settings.hiddenRepos,
                                                 shown: settings.shownRepos, hostDefaults: settings.hostDefaults),
                                    now: now)
+            // Das Board-Fenster zeichnet denselben Zustand selbst in Fenstergröße (status-display#38);
+            // das 1920×462-Bild geht nur noch ans AKP02.
+            self.boardWindowController.update(state: state)
             let image = BoardRenderer.render(state)
-            self.renderedBoardImage = image
-            self.boardWindowController.update(image: image)
             self.display.show(jpeg: PanelImage.encode(landscape: image))
         }
     }

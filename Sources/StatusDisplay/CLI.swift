@@ -39,7 +39,38 @@ extension CLI {
     /// Schreibt ein Beispiel-Board als PNG (Querformat) zur Sichtprüfung.
     static func preview(_ path: String?) -> Int32 {
         guard let path else { print("Aufruf: StatusDisplay preview <datei.png>"); return 2 }
-        let now = Date()
+        return write(PanelImage.png(BoardRenderer.render(sampleState(now: Date()))), to: path)
+    }
+
+    /// Schreibt das Board-Fenster (status-display#38) in `breite`×`höhe` Punkt bei 2× Auflösung als
+    /// PNG zur Sichtprüfung – dasselbe Beispiel wie `preview`, auf Wunsch ohne Agenten.
+    static func previewWindow(_ arguments: [String]) -> Int32 {
+        let withoutAgents = arguments.contains("--ohne-agenten")
+        let positional = arguments.filter { !$0.hasPrefix("--") }
+        guard let path = positional.first else {
+            print("Aufruf: StatusDisplay preview-window <datei.png> [breite] [höhe] [--ohne-agenten]")
+            return 2
+        }
+        let width = positional.count > 1 ? Double(positional[1]) ?? 480 : 480
+        let height = positional.count > 2 ? Double(positional[2]) ?? 110 : 110
+        var state = sampleState(now: Date())
+        if withoutAgents { state.agents = [] }
+        let image = BoardWindowRenderer.render(state, size: CGSize(width: width, height: height), scale: 2)
+        return write(PanelImage.png(image), to: path)
+    }
+
+    private static func write(_ data: Data, to path: String) -> Int32 {
+        do {
+            try data.write(to: URL(fileURLWithPath: path))
+            print(path)
+            return 0
+        } catch {
+            print("Schreiben fehlgeschlagen: \(error)")
+            return 1
+        }
+    }
+
+    private static func sampleState(now: Date) -> BoardState {
         let agents = [
             AgentActivity(id: "1", source: "claude-code", name: "rundfunk", state: .waiting,
                           since: now.addingTimeInterval(-65 * 60), lastSeen: now),
@@ -82,26 +113,18 @@ extension CLI {
                         url: URL(string: "https://ghe.firma.de/florianhuber/internal-tools/pull/8")!,
                         ciFailing: false, hasExtraRequestForMe: true),
         ]
-        let state = BoardState(statusName: "Deep Focus", statusColor: RGBColor(hex: "#B3263E")!,
-                               statusSince: now.addingTimeInterval(-47 * 60), agents: agents,
-                               prs: PRZone(rows: rows, ciFailingCount: 1, lastSuccess: now, isStale: false,
-                                          hiddenReviews: hiddenReviews),
-                               now: now)
-        do {
-            try PanelImage.png(BoardRenderer.render(state)).write(to: URL(fileURLWithPath: path))
-            print(path)
-            return 0
-        } catch {
-            print("Schreiben fehlgeschlagen: \(error)")
-            return 1
-        }
+        return BoardState(statusName: "Deep Focus", statusColor: RGBColor(hex: "#B3263E")!,
+                          statusSince: now.addingTimeInterval(-47 * 60), agents: agents,
+                          prs: PRZone(rows: rows, ciFailingCount: 1, lastSuccess: now, isStale: false,
+                                     hiddenReviews: hiddenReviews),
+                          now: now)
     }
 }
 
 extension CLI {
     /// Beendet den Prozess sofort, wenn schon eine Instanz mit derselben Bundle-ID läuft – bevor
     /// die App Server, HID-Transport oder Dateien anfasst (status-display#27). Nur der App-Start
-    /// (`default`-Zweig in main.swift) ruft das auf; `hook`/`preview`/`display-test`/`version`
+    /// (`default`-Zweig in main.swift) ruft das auf; `hook`/`preview`/`preview-window`/`display-test`/`version`
     /// bleiben davon unberührt und laufen weiter parallel zur laufenden App. Eine aus dem
     /// Build-Ordner gestartete Kopie hat dieselbe Bundle-ID und zählt absichtlich als „schon eine
     /// Instanz“.
