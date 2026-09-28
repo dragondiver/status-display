@@ -28,10 +28,17 @@ public struct PRZone: Equatable {
     /// Ältester erfolgreicher Abruf über alle Hosts; nil = noch nie.
     public var lastSuccess: Date?
     public var isStale: Bool
+    /// Review-Requests an Florian in ausgeblendeten Repos (explizit oder per Host-Standard) – eigene
+    /// offene PRs zählen hier nicht (Entscheidung Florian, 28.09.2026, status-display#19). Bewusst
+    /// kein Teil von `rows`: Board und Menü entscheiden je selbst, wie sie eine Sammelzeile daraus
+    /// bilden, statt dass eine ausgeblendete Zeile unbemerkt durch die normale Zeilenkürzung fällt.
+    public var hiddenReviews: [PullRequest]
 
-    public init(rows: [PRRow], ciFailingCount: Int, lastSuccess: Date?, isStale: Bool) {
+    public init(rows: [PRRow], ciFailingCount: Int, lastSuccess: Date?, isStale: Bool,
+               hiddenReviews: [PullRequest] = []) {
         self.rows = rows; self.ciFailingCount = ciFailingCount
         self.lastSuccess = lastSuccess; self.isStale = isStale
+        self.hiddenReviews = hiddenReviews
     }
 
     public static let unknown = PRZone(rows: [], ciFailingCount: 0, lastSuccess: nil, isStale: true)

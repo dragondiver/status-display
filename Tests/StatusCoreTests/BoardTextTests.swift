@@ -58,9 +58,36 @@ final class BoardTextTests: XCTestCase {
         let four = (0..<4).map(row)
         XCTAssertEqual(BoardText.visiblePRRows(four).rows.count, 4)
         XCTAssertEqual(BoardText.visiblePRRows(four).more, 0)
+        XCTAssertNil(BoardText.visiblePRRows(four).hiddenHint)
         let seven = (0..<7).map(row)
         XCTAssertEqual(BoardText.visiblePRRows(seven).rows.count, 4)
         XCTAssertEqual(BoardText.visiblePRRows(seven).more, 3)
+    }
+
+    // MARK: Hinweiszeile „Ausgeblendet · N zu reviewen“ (Issue #19)
+
+    func testVisiblePRRowsWithHiddenHintReservesALastLineAndIsNeverCutOff() {
+        func row(_ n: Int) -> PRRow {
+            PRRow(repoKey: "github.com/f/r\(n)", repository: "r\(n)", toReview: 0, mine: 0, ciFailing: false)
+        }
+        // Vier Zeilen + Hinweis passen genau in die 5 Zeilen: kein "+N weitere" nötig.
+        let four = (0..<4).map(row)
+        let r1 = BoardText.visiblePRRows(four, hiddenReviewCount: 3)
+        XCTAssertEqual(r1.rows.count, 4)
+        XCTAssertEqual(r1.more, 0)
+        XCTAssertEqual(r1.hiddenHint, "Ausgeblendet · 3 zu reviewen")
+
+        // Sieben Zeilen + Hinweis: eine Zeile weniger als ohne Hinweis (3 statt 4), Rest in
+        // "+N weitere" – die Hinweiszeile bleibt trotzdem als eigene, letzte Zeile erhalten.
+        let seven = (0..<7).map(row)
+        let r2 = BoardText.visiblePRRows(seven, hiddenReviewCount: 5)
+        XCTAssertEqual(r2.rows.count, 3)
+        XCTAssertEqual(r2.more, 4)
+        XCTAssertEqual(r2.hiddenHint, "Ausgeblendet · 5 zu reviewen")
+    }
+
+    func testVisiblePRRowsWithoutHiddenReviewsHasNoHint() {
+        XCTAssertNil(BoardText.visiblePRRows([], hiddenReviewCount: 0).hiddenHint)
     }
 
     func testStatusFontShrinksForLongWords() {

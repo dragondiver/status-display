@@ -7,15 +7,27 @@ public struct AppSettings: Codable, Equatable {
     public var port: UInt16 = 47615
     public var ghPath = ""
     /// Einträge der Form `host/owner/name`. Erscheinen in der PR-Tabelle immer, auch mit 0/0.
-    /// Zunächst leer; die Auswahl-UI dafür folgt in einer eigenen Karte.
     public var pinnedRepos: [String] = []
     /// Einträge der Form `host/owner/name`. Erscheinen nie in der PR-Tabelle.
     public var hiddenRepos: [String] = []
+    /// Einträge der Form `host/owner/name`, die explizit auf „normal“ stehen, obwohl der
+    /// Host-Standard (`hostDefaults`) für ihren Host „ausgeblendet“ ist. Ohne diese Liste ließe
+    /// sich unter einem Host-Standard von „ausgeblendet“ kein einzelnes Repo wieder normal
+    /// schalten (Entscheidung Florian, 28.09.2026, status-display#19).
+    public var shownRepos: [String] = []
+    /// Standard-Zustand (normal/ausgeblendet) für Repos ohne Eintrag in `pinnedRepos`/
+    /// `hiddenRepos`/`shownRepos`, pro Host. Bewusst ein eigener Standard statt Hunderte
+    /// Einträge in `hiddenRepos`: später auf einem Host neu angelegte Repos folgen so automatisch
+    /// dem Standard. Gesetzt beim Hinzufügen eines Hosts (`addHost`, `github.com` normal, alle
+    /// anderen Hosts ausgeblendet) und beim Dekodieren alter Einstellungen ohne dieses Feld
+    /// (siehe `init(from:)`); siehe `RepoSelection.hostDefault(for:hostDefaults:)` für die Regel,
+    /// die dabei angewendet wird.
+    public var hostDefaults: [String: RepoDefault] = [:]
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case hosts, brightness, port, ghPath, pinnedRepos, hiddenRepos
+        case hosts, brightness, port, ghPath, pinnedRepos, hiddenRepos, shownRepos, hostDefaults
     }
 
     // Handgeschrieben statt synthetisiert: Felder, die es in gespeicherten Einstellungen noch
@@ -29,6 +41,21 @@ public struct AppSettings: Codable, Equatable {
         ghPath = try c.decodeIfPresent(String.self, forKey: .ghPath) ?? AppSettings().ghPath
         pinnedRepos = try c.decodeIfPresent([String].self, forKey: .pinnedRepos) ?? []
         hiddenRepos = try c.decodeIfPresent([String].self, forKey: .hiddenRepos) ?? []
+        shownRepos = try c.decodeIfPresent([String].self, forKey: .shownRepos) ?? []
+        if let decoded = try c.decodeIfPresent([String: RepoDefault].self, forKey: .hostDefaults) {
+            hostDefaults = decoded
+        } else {
+            // Vor Issue #19 gespeicherte Einstellungen kennen `hostDefaults` noch nicht: für ihre
+            // damals schon eingetragenen Hosts gilt rückwirkend dieselbe Regel wie für neu
+            // hinzugefügte (`addHost`) – github.com normal, alle anderen ausgeblendet – (Entscheidung
+            // Florian, 28.09.2026). `github.com` bekommt dabei bewusst keinen expliziten Eintrag:
+            // `RepoSelection.hostDefault(for:hostDefaults:)` liefert für ihn ohnehin „normal“, und so
+            // bleibt der ganz normale Fall (nur github.com, keine anderen Hosts) identisch mit
+            // `AppSettings()` statt unnötig einen Eintrag mitzuschleppen.
+            hostDefaults = Dictionary(uniqueKeysWithValues: hosts.filter { $0 != "github.com" }.map { host in
+                (host, RepoDefault.hidden)
+            })
+        }
     }
 
     private static let key = "settings"
@@ -39,6 +66,16 @@ public struct AppSettings: Codable, Equatable {
 
     public func save(to defaults: UserDefaults = .standard) {
         defaults.set(try? JSONEncoder().encode(self), forKey: Self.key)
+    }
+
+    /// Fügt `host` zu `hosts` hinzu (falls noch nicht vorhanden) und setzt seinen Standard:
+    /// `github.com` normal, jeder andere Host ausgeblendet (Entscheidung Florian, 28.09.2026,
+    /// status-display#19). Für `github.com` selbst wird bewusst kein Eintrag angelegt – siehe
+    /// `init(from:)`.
+    public mutating func addHost(_ host: String) {
+        guard !hosts.contains(host) else { return }
+        hosts.append(host)
+        if host != "github.com" { hostDefaults[host] = .hidden }
     }
 
     /// Trimmt, entfernt ein führendes `https://`/`http://` und ein abschließendes `/`, kleinschreibt,

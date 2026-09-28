@@ -213,7 +213,8 @@ final class AppModel: ObservableObject {
             let state = BoardState(statusName: status.preset.name, statusColor: status.preset.color,
                                    statusSince: status.since, agents: agents,
                                    prs: prs.zone(now: now, hosts: settings.hosts,
-                                                pinned: settings.pinnedRepos, hidden: settings.hiddenRepos),
+                                                pinned: settings.pinnedRepos, hidden: settings.hiddenRepos,
+                                                shown: settings.shownRepos, hostDefaults: settings.hostDefaults),
                                    now: now)
             display.show(jpeg: PanelImage.encode(landscape: BoardRenderer.render(state)))
         }
@@ -283,9 +284,11 @@ final class AppModel: ObservableObject {
         if old.hosts != settings.hosts || old.ghPath != settings.ghPath {
             Task { await refreshPRs() }
         }
-        // Angeheftet/ausgeblendet wirkt nur auf die Zeilenbildung aus bereits vorhandenen
-        // Snapshots (PRAggregator.zone) – dafür reicht ein Neu-Rendern, kein neuer GitHub-Abruf.
-        if old.pinnedRepos != settings.pinnedRepos || old.hiddenRepos != settings.hiddenRepos {
+        // Angeheftet/ausgeblendet/normal und der Host-Standard wirken nur auf die Zeilenbildung
+        // aus bereits vorhandenen Snapshots (PRAggregator.zone) – dafür reicht ein Neu-Rendern,
+        // kein neuer GitHub-Abruf.
+        if old.pinnedRepos != settings.pinnedRepos || old.hiddenRepos != settings.hiddenRepos
+            || old.shownRepos != settings.shownRepos || old.hostDefaults != settings.hostDefaults {
             scheduleRender()
         }
     }

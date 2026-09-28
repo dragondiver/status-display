@@ -34,9 +34,18 @@ public enum BoardText {
 
     /// Höchstens `maxRows` Zeilen der PR-Tabelle; bei Überlauf eine Zeile weniger plus
     /// „+N weitere” (gleiches Prinzip wie `visibleAgents`).
-    public static func visiblePRRows(_ rows: [PRRow], maxRows: Int = 5) -> (rows: [PRRow], more: Int) {
-        guard rows.count > maxRows else { return (rows, 0) }
-        return (Array(rows.prefix(maxRows - 1)), rows.count - (maxRows - 1))
+    ///
+    /// Ist `hiddenReviewCount > 0`, wird für die Hinweiszeile „Ausgeblendet · N zu reviewen“
+    /// immer eine eigene, letzte Zeile reserviert (eine weniger für `rows`/„+N weitere“), statt
+    /// sie selbst der Kürzung zu unterwerfen – sie soll nie abgeschnitten werden (Entscheidung
+    /// Florian, 28.09.2026, status-display#19).
+    public static func visiblePRRows(_ rows: [PRRow], hiddenReviewCount: Int = 0, maxRows: Int = 5)
+        -> (rows: [PRRow], more: Int, hiddenHint: String?) {
+        let hint = hiddenReviewCount > 0 ? "Ausgeblendet · \(hiddenReviewCount) zu reviewen" : nil
+        let available = max(hint != nil ? maxRows - 1 : maxRows, 0)
+        guard rows.count > available else { return (rows, 0, hint) }
+        let shown = max(available - 1, 0)
+        return (Array(rows.prefix(shown)), rows.count - shown, hint)
     }
 
     /// Grobe Breitenschätzung für fette Großbuchstaben (0,68 × Schriftgröße je Zeichen).

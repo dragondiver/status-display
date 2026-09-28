@@ -62,12 +62,18 @@ Mit der Python-Library [deonspengler/akp02](https://github.com/deonspengler/akp0
 - **PRs**: eine Tabelle statt Summen, eine Zeile pro Repo (Repo · zu reviewen ·
   eigene offen). Roter Punkt vor dem Repo, wenn dort ein eigener Nicht-Draft-PR
   rote CI hat; roter Rand der ganzen Zone bei mindestens einem eigenen
-  Nicht-Draft-PR mit roter CI, unabhängig von Anheften/Ausblenden. Angeheftete
-  Repos (Einstellung `pinnedRepos`, zunächst leer, Auswahl-UI folgt) erscheinen
+  Nicht-Draft-PR mit roter CI, unabhängig von Anheften/Ausblenden. Jedes Repo
+  hat einen von drei expliziten Zuständen – normal / angeheftet / ausgeblendet
+  (`pinnedRepos`/`hiddenRepos`/`shownRepos`, Reiter „Repos", #15/#19) – oder,
+  ohne Eintrag, den Standard seines Hosts (`hostDefaults`): `github.com` ist
+  normal, jeder andere Host ist ausgeblendet. Angeheftete Repos erscheinen
   immer, auch mit 0/0; andere Repos nur bei Review-Request oder eigenem
-  offenem PR; ausgeblendete Repos (`hiddenRepos`) nie. Sortierung: zuerst
-  „zu reviewen" > 0, dann angeheftet, dann der Rest. Höchstens 5 Zeilen,
-  danach „+N weitere".
+  offenem PR; ausgeblendete nie. Sortierung: zuerst „zu reviewen" > 0, dann
+  angeheftet, dann der Rest. Höchstens 5 Zeilen, danach „+N weitere". Gibt es
+  Review-Requests an Florian in ausgeblendeten Repos, reserviert die Tabelle
+  dafür immer eine eigene, nie abgeschnittene letzte Zeile „Ausgeblendet · N
+  zu reviewen" (grau; eigene offene PRs zählen hier nicht) – im Menü
+  aufklappbar mit den einzelnen PRs (#19).
 - **Veraltete Daten** werden nie still weiter angezeigt: Ist eine Quelle länger
   als 3 Abfrageintervalle ohne Erfolg, wird ihre Zone grau und zeigt das Alter
   („PRs · Stand 14:05").

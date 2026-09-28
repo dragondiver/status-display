@@ -35,10 +35,14 @@ struct MenuContent: View {
         Divider()
         Section("PRs") {
             let zone = model.prs.zone(now: Date(), hosts: model.settings.hosts,
-                                      pinned: model.settings.pinnedRepos, hidden: model.settings.hiddenRepos)
-            if zone.rows.isEmpty { Text("keine") }
+                                      pinned: model.settings.pinnedRepos, hidden: model.settings.hiddenRepos,
+                                      shown: model.settings.shownRepos, hostDefaults: model.settings.hostDefaults)
+            if zone.rows.isEmpty && zone.hiddenReviews.isEmpty { Text("keine") }
             ForEach(zone.rows) { row in
                 repoMenu(row)
+            }
+            if !zone.hiddenReviews.isEmpty {
+                hiddenReviewsMenu(zone.hiddenReviews)
             }
             ForEach(model.settings.hosts, id: \.self) { host in
                 if let warning = model.prs.snapshots[host]?.warning { Text("\(host): Hinweis: \(warning)") }
@@ -69,6 +73,21 @@ struct MenuContent: View {
                 }
             }
         }
+    }
+
+    /// Unauffällige, aufklappbare Hinweiszeile für Review-Requests in ausgeblendeten Repos
+    /// (Entscheidung Florian, 28.09.2026, status-display#19). Eigene offene PRs zählen hier nicht,
+    /// `PRAggregator.zone` liefert sie deshalb gar nicht erst in `hiddenReviews`.
+    @ViewBuilder
+    private func hiddenReviewsMenu(_ reviews: [PullRequest]) -> some View {
+        Menu("Ausgeblendet · \(reviews.count) zu reviewen") {
+            ForEach(reviews) { pr in
+                Button((pr.ciFailing ? "● " : "") + "\(pr.repository) #\(pr.number) \(pr.title)") {
+                    NSWorkspace.shared.open(pr.url)
+                }
+            }
+        }
+        .foregroundStyle(.secondary)
     }
 
     /// Alle eigenen PRs und Review-Requests für ein Repo (`host/owner/name`), über alle Hosts,
