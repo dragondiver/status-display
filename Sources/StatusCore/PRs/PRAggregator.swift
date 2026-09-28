@@ -39,22 +39,27 @@ public struct PRAggregator {
     /// Florian, 28.09.2026, status-display#19); eigene offene PRs aus ausgeblendeten Repos tauchen
     /// nirgends mehr auf.
     ///
-    /// Review-Requests mit `reviewDecision == APPROVED` zählen nirgends mehr als „zu reviewen“
-    /// (weder in `rows[].toReview` noch in `hiddenReviews`) – Entscheidung Florian, 28.09.2026,
-    /// status-display#21. Sie tauchen stattdessen als `PRRow.approvedReviews`
-    /// pro (nicht ausgeblendetem) Repo auf, damit das Menü sie in einem eigenen Abschnitt „schon
-    /// freigegeben“ zeigen kann; ein Repo ganz ohne offene eigene PRs, dessen einzige
-    /// Review-Requests bereits freigegeben sind, bekommt dadurch keine `Acc`-Zeile und verschwindet
-    /// aus der Tabelle (außer es ist angeheftet). In ausgeblendeten Repos werden freigegebene
-    /// Review-Requests nicht gesondert aufbewahrt – wie eigene offene PRs verschwinden sie dort
-    /// ganz.
+    /// Review-Requests, für die `PullRequest.needsMyReview == false` ist, zählen nirgends mehr als
+    /// „zu reviewen“ (weder in `rows[].toReview` noch in `hiddenReviews`) – Entscheidung Florian,
+    /// 28.09.2026, status-display#21 (verfeinert im selben Issue: nicht mehr `reviewDecision ==
+    /// APPROVED`, sondern Code-Owner- vs. Extra-Anfrage, siehe `PullRequest.needsMyReview`). Sie
+    /// tauchen stattdessen als `PRRow.approvedReviews` pro (nicht ausgeblendetem) Repo auf, damit
+    /// das Menü sie in einem eigenen Abschnitt „schon freigegeben“ zeigen kann; ein Repo ganz ohne
+    /// offene eigene PRs, dessen einzige Review-Requests so schon erledigt sind, bekommt dadurch
+    /// keine `Acc`-Zeile und verschwindet aus der Tabelle (außer es ist angeheftet). In
+    /// ausgeblendeten Repos werden solche Review-Requests nicht gesondert aufbewahrt – wie eigene
+    /// offene PRs verschwinden sie dort ganz.
+    ///
+    /// `PRRow.hasExtraReview` markiert eine Zeile, sobald mindestens einer der gezählten
+    /// Review-Requests eine Extra-Anfrage (`hasExtraRequestForMe`) ist – der Renderer färbt die
+    /// Review-Zahl dann orange, ebenso `hiddenReviews`-Konsumenten für die Hinweiszeile.
     public func zone(now: Date, hosts: [String], pinned: [String] = [], hidden: [String] = [],
                      shown: [String] = [], hostDefaults: [String: RepoDefault] = [:]) -> PRZone {
         let all = Array(snapshots.values)
         guard let oldest = all.map(\.fetchedAt).min() else { return .unknown }
         let missingHost = hosts.contains { snapshots[$0] == nil }
 
-        struct Acc { var repository: String; var toReview = 0; var mine = 0; var ciFailing = false }
+        struct Acc { var repository: String; var toReview = 0; var mine = 0; var ciFailing = false; var hasExtraReview = false }
         var acc: [String: Acc] = [:]
         var totalCIFailing = 0
         var reviewsByKey: [String: [PullRequest]] = [:]
@@ -65,6 +70,7 @@ public struct PRAggregator {
                 let key = repoKey(host: snapshot.host, repository: pr.repository)
                 if pr.needsMyReview {
                     acc[key, default: Acc(repository: pr.repository)].toReview += 1
+                    if pr.hasExtraRequestForMe { acc[key, default: Acc(repository: pr.repository)].hasExtraReview = true }
                     reviewsByKey[key, default: []].append(pr)
                 } else {
                     approvedByKey[key, default: []].append(pr)
@@ -108,7 +114,8 @@ public struct PRAggregator {
         let rows = acc.map { key, a in
             let approved = (approvedByKey[key] ?? []).sorted { $0.number < $1.number }
             return PRRow(repoKey: key, repository: Self.shortName(a.repository),
-                        toReview: a.toReview, mine: a.mine, ciFailing: a.ciFailing, approvedReviews: approved)
+                        toReview: a.toReview, mine: a.mine, ciFailing: a.ciFailing, approvedReviews: approved,
+                        hasExtraReview: a.hasExtraReview)
         }
         let sorted = rows.sorted { lhs, rhs in
             let l = group(lhs, pinned: pinnedSet), r = group(rhs, pinned: pinnedSet)

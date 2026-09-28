@@ -13,6 +13,9 @@ func pixel(_ image: CGImage, _ x: Int, _ y: Int) -> (r: UInt8, g: UInt8, b: UInt
 }
 
 func isRed(_ p: (r: UInt8, g: UInt8, b: UInt8)) -> Bool { p.r > 200 && p.g < 60 && p.b < 60 }
+/// Amber/orange (`#F0B43C`): heller Rotanteil, mittlerer Grünanteil, wenig Blau – unterscheidet
+/// sich damit sowohl von Weiß (g auch hoch) als auch von Rot (g niedrig).
+func isAmber(_ p: (r: UInt8, g: UInt8, b: UInt8)) -> Bool { p.r > 200 && p.g > 140 && p.g < 220 && p.b < 120 }
 func isBlue(_ p: (r: UInt8, g: UInt8, b: UInt8)) -> Bool { p.b > 200 && p.r < 60 && p.g < 60 }
 func isWhitish(_ p: (r: UInt8, g: UInt8, b: UInt8)) -> Bool { p.r > 240 && p.g > 240 && p.b > 240 }
 /// Gedeckte Textfarbe (`muted`/`grey`, z.B. veraltete Tabelle): heller als der Hintergrund

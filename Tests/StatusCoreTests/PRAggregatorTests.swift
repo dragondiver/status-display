@@ -4,10 +4,16 @@ import XCTest
 final class PRAggregatorTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_790_000_000)
 
+    /// Standardmäßig eine normale, noch offene Code-Owner-Anfrage (zählt als „zu reviewen“) – die
+    /// meisten Tests hier drehen sich nicht um die Zählregel selbst (die hat eigene Tests unten und
+    /// in `PullRequestTests`), sondern um Zeilenbildung/Sortierung/Sichtbarkeit.
     private func pr(_ n: Int, repository: String = "a/b", failing: Bool = false, draft: Bool = false,
-                    reviewDecision: ReviewDecision? = nil) -> PullRequest {
+                    isCodeOwnerRequest: Bool = true, isExtraRequest: Bool = false,
+                    foreignApprovalOrChangesRequested: Bool = false) -> PullRequest {
         PullRequest(number: n, title: "t", repository: repository, url: URL(string: "https://x/\(n)")!,
-                   ciFailing: failing, isDraft: draft, reviewDecision: reviewDecision)
+                   ciFailing: failing, isDraft: draft,
+                   hasCodeOwnerRequestForMe: isCodeOwnerRequest, hasExtraRequestForMe: isExtraRequest,
+                   hasForeignApprovalOrChangesRequested: foreignApprovalOrChangesRequested)
     }
 
     func testEmptyIsUnknownAndStale() {
@@ -183,51 +189,88 @@ final class PRAggregatorTests: XCTestCase {
         XCTAssertTrue(z.hiddenReviews.isEmpty)
     }
 
-    // MARK: Freigegebene Review-Requests zählen nicht mit (Issue #21)
+    // MARK: Erledigte Code-Owner-Anfragen zählen nicht mit (Issue #21)
 
-    /// `APPROVED` zählt nicht in `toReview`, `CHANGES_REQUESTED`/`REVIEW_REQUIRED`/`nil` weiterhin.
-    func testApprovedReviewDoesNotCountButOthersDo() {
+    /// Eine erledigte Code-Owner-Anfrage (fremdes APPROVED/CHANGES_REQUESTED) zählt nicht mehr in
+    /// `toReview`, eine offene Code-Owner-Anfrage weiterhin.
+    func testForeignlyDecidedCodeOwnerRequestDoesNotCountButOpenOneDoes() {
         var a = PRAggregator()
         a.record(PRSnapshot(host: "github.com",
-                            toReview: [pr(1, reviewDecision: .approved), pr(2, reviewDecision: .changesRequested),
-                                      pr(3, reviewDecision: .reviewRequired), pr(4, reviewDecision: nil)],
+                            toReview: [pr(1, foreignApprovalOrChangesRequested: true), pr(2)],
                             mine: [], fetchedAt: t0))
         let z = a.zone(now: t0, hosts: ["github.com"])
-        XCTAssertEqual(z.rows.map(\.toReview), [3])
+        XCTAssertEqual(z.rows.map(\.toReview), [1])
         XCTAssertEqual(z.rows.first?.approvedReviews.map(\.number), [1])
     }
 
     /// Ein normales (nicht angeheftetes) Repo ohne eigene offene PRs, dessen einzige
-    /// Review-Requests bereits freigegeben sind, taucht nicht mehr in der Tabelle auf.
-    func testRepoWithOnlyApprovedReviewsAndNoOwnPRsDisappearsFromTable() {
+    /// Review-Requests schon durch einen fremden Review erledigt sind, taucht nicht mehr in der
+    /// Tabelle auf.
+    func testRepoWithOnlyDecidedCodeOwnerRequestsAndNoOwnPRsDisappearsFromTable() {
         var a = PRAggregator()
-        a.record(PRSnapshot(host: "github.com", toReview: [pr(1, repository: "f/rundfunk", reviewDecision: .approved)],
+        a.record(PRSnapshot(host: "github.com",
+                            toReview: [pr(1, repository: "f/rundfunk", foreignApprovalOrChangesRequested: true)],
                             mine: [], fetchedAt: t0))
         let z = a.zone(now: t0, hosts: ["github.com"])
         XCTAssertTrue(z.rows.isEmpty)
     }
 
-    /// Ein angeheftetes Repo bleibt auch dann sichtbar (mit 0 zu reviewen), wenn seine einzigen
-    /// Review-Requests bereits freigegeben sind.
-    func testPinnedRepoWithOnlyApprovedReviewsStillAppearsWithZero() {
+    /// Ein angeheftetes Repo bleibt auch dann sichtbar (mit 0 zu reviewen), wenn seine einzige
+    /// Review-Anfrage schon durch einen fremden Review erledigt ist.
+    func testPinnedRepoWithOnlyDecidedCodeOwnerRequestsStillAppearsWithZero() {
         var a = PRAggregator()
-        a.record(PRSnapshot(host: "github.com", toReview: [pr(1, repository: "f/rundfunk", reviewDecision: .approved)],
-                            mine: [], fetchedAt: t0))
+        let decided = pr(1, repository: "f/rundfunk", foreignApprovalOrChangesRequested: true)
+        a.record(PRSnapshot(host: "github.com", toReview: [decided], mine: [], fetchedAt: t0))
         let z = a.zone(now: t0, hosts: ["github.com"], pinned: ["github.com/f/rundfunk"])
         XCTAssertEqual(z.rows, [PRRow(repoKey: "github.com/f/rundfunk", repository: "rundfunk",
-                                      toReview: 0, mine: 0, ciFailing: false,
-                                      approvedReviews: [pr(1, repository: "f/rundfunk", reviewDecision: .approved)])])
+                                      toReview: 0, mine: 0, ciFailing: false, approvedReviews: [decided])])
     }
 
-    /// Die Hinweiszeile „Ausgeblendet · N zu reviewen“ zählt freigegebene Review-Requests aus
-    /// ausgeblendeten Repos nicht mit.
-    func testHiddenReviewsExcludesApprovedReviews() {
+    /// Die Hinweiszeile „Ausgeblendet · N zu reviewen“ zählt schon erledigte Code-Owner-Anfragen
+    /// aus ausgeblendeten Repos nicht mit.
+    func testHiddenReviewsExcludesForeignlyDecidedCodeOwnerRequests() {
         var a = PRAggregator()
         a.record(PRSnapshot(host: "github.com",
-                            toReview: [pr(1, repository: "f/rundfunk", reviewDecision: .approved),
-                                      pr(2, repository: "f/rundfunk", reviewDecision: .changesRequested)],
+                            toReview: [pr(1, repository: "f/rundfunk", foreignApprovalOrChangesRequested: true),
+                                      pr(2, repository: "f/rundfunk")],
                             mine: [], fetchedAt: t0))
         let z = a.zone(now: t0, hosts: ["github.com"], hidden: ["github.com/f/rundfunk"])
         XCTAssertEqual(z.hiddenReviews.map(\.number), [2])
+    }
+
+    // MARK: Extra-Anfragen zählen immer und markieren die Zeile orange (Issue #21, Verfeinerung)
+
+    /// Eine Extra-Anfrage zählt, auch wenn der PR schon fremd freigegeben ist (anders als eine
+    /// Code-Owner-Anfrage).
+    func testExtraRequestCountsDespiteForeignApproval() {
+        var a = PRAggregator()
+        let extra = pr(1, isCodeOwnerRequest: false, isExtraRequest: true, foreignApprovalOrChangesRequested: true)
+        a.record(PRSnapshot(host: "github.com", toReview: [extra], mine: [], fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["github.com"])
+        XCTAssertEqual(z.rows.map(\.toReview), [1])
+        XCTAssertTrue(z.rows.first?.approvedReviews.isEmpty ?? false)
+    }
+
+    /// `PRRow.hasExtraReview` ist nur gesetzt, wenn mindestens ein gezählter Review-Request in
+    /// diesem Repo eine Extra-Anfrage ist – eine reine Code-Owner-Anfrage markiert nicht orange.
+    func testHasExtraReviewFlagOnlySetWhenExtraRequestCounts() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "github.com", toReview: [pr(1, repository: "f/a")], mine: [], fetchedAt: t0))
+        a.record(PRSnapshot(host: "ghe", toReview: [pr(2, repository: "f/b", isCodeOwnerRequest: false, isExtraRequest: true)],
+                            mine: [], fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["github.com", "ghe"], hostDefaults: ["ghe": .normal])
+        XCTAssertFalse(z.rows.first { $0.repoKey == "github.com/f/a" }?.hasExtraReview ?? true)
+        XCTAssertTrue(z.rows.first { $0.repoKey == "ghe/f/b" }?.hasExtraReview ?? false)
+    }
+
+    /// Eine Extra-Anfrage in einem ausgeblendeten Repo markiert die `hiddenReviews`, die die
+    /// Hinweiszeile orange färbt (geprüft über `PullRequest.hasExtraRequestForMe`, nicht über ein
+    /// eigenes `PRZone`-Feld).
+    func testHiddenReviewsIncludeExtraFlagForHintLineColoring() {
+        var a = PRAggregator()
+        let extra = pr(1, repository: "f/rundfunk", isCodeOwnerRequest: false, isExtraRequest: true)
+        a.record(PRSnapshot(host: "github.com", toReview: [extra], mine: [], fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["github.com"], hidden: ["github.com/f/rundfunk"])
+        XCTAssertTrue(z.hiddenReviews.contains { $0.hasExtraRequestForMe })
     }
 }
