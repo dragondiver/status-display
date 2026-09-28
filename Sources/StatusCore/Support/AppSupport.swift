@@ -3,7 +3,14 @@ import Security
 
 public struct Endpoint: Codable, Equatable {
     public var port: UInt16
-    public init(port: UInt16) { self.port = port }
+    /// PID der Instanz, die diese Datei geschrieben hat (status-display#27). Optional, damit eine
+    /// von einer älteren Version geschriebene `endpoint.json` ohne `pid` noch decodierbar ist – der
+    /// Hook-Befehl liest ohnehin nur `port`. `nil` heißt „unbekannt/fremd“, nie „ist meine“.
+    public var pid: Int32?
+    public init(port: UInt16, pid: Int32? = nil) {
+        self.port = port
+        self.pid = pid
+    }
 }
 
 /// Lokal zwischengespeicherte Repo-Liste eines Hosts (Einstellungs-Reiter „Repos“, #15) mit
@@ -71,8 +78,20 @@ public struct AppSupport {
     }
 
     /// Hooks sollen das Token nie an einen Port schicken, den die App nicht (mehr) belegt.
+    /// Bedingungslos – nur als Baustein für `removeEndpointIfOwn` bzw. für Tests gedacht, denn
+    /// alleine entfernt sie auch eine `endpoint.json`, die einer anderen, noch laufenden Instanz
+    /// gehört (status-display#27).
     public func removeEndpoint() {
         try? FileManager.default.removeItem(at: endpointURL)
+    }
+
+    /// Wie `removeEndpoint()`, aber nur, wenn die aktuell auf der Platte stehende `endpoint.json`
+    /// nachweislich von dieser Instanz (`ownPid`) geschrieben wurde – siehe `EndpointOwnership`.
+    /// Das ist der Aufruf, den die App bei eigenen Fehlern/beim Beenden benutzen soll, damit eine
+    /// zweite, gescheiterte Instanz nie die Datei einer erfolgreich laufenden Instanz löscht.
+    public func removeEndpointIfOwn(ownPid: Int32) {
+        guard EndpointOwnership.mayRemove(endpoint: readEndpoint(), ownPid: ownPid) else { return }
+        removeEndpoint()
     }
 
     public func readEndpoint() -> Endpoint? {

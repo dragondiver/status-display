@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import StatusCore
@@ -94,6 +95,23 @@ extension CLI {
             print("Schreiben fehlgeschlagen: \(error)")
             return 1
         }
+    }
+}
+
+extension CLI {
+    /// Beendet den Prozess sofort, wenn schon eine Instanz mit derselben Bundle-ID läuft – bevor
+    /// die App Server, HID-Transport oder Dateien anfasst (status-display#27). Nur der App-Start
+    /// (`default`-Zweig in main.swift) ruft das auf; `hook`/`preview`/`display-test`/`version`
+    /// bleiben davon unberührt und laufen weiter parallel zur laufenden App. Eine aus dem
+    /// Build-Ordner gestartete Kopie hat dieselbe Bundle-ID und zählt absichtlich als „schon eine
+    /// Instanz“.
+    static func enforceSingleInstance() {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return }
+        let ownPid = ProcessInfo.processInfo.processIdentifier
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        guard SingleInstance.shouldQuit(runningPids: running.map(\.processIdentifier), ownPid: ownPid) else { return }
+        running.first { $0.processIdentifier != ownPid }?.activate()
+        exit(0)
     }
 }
 
