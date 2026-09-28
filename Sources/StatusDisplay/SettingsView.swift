@@ -164,6 +164,24 @@ struct SettingsView: View {
                 Text(repoError).foregroundStyle(.red).font(.caption)
             }
 
+            // Standard für Repos ohne eigenen Eintrag in pinnedRepos/hiddenRepos/shownRepos
+            // (Entscheidung Florian, 28.09.2026, status-display#19): github.com normal, andere
+            // Hosts ausgeblendet – hier pro Host umschaltbar.
+            HStack {
+                Text("Nicht eingestellte Repos:").font(.caption).foregroundStyle(.secondary)
+                Picker("", selection: Binding(
+                    get: { hostDefault },
+                    set: { model.settings.setHostDefault($0, for: repoHost) }
+                )) {
+                    Text("normal").tag(RepoDefault.normal)
+                    Text("ausgeblendet").tag(RepoDefault.hidden)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 220)
+                .disabled(repoHost.isEmpty)
+            }
+
             if !pinnedForHost.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Angeheftet").font(.headline)
@@ -181,9 +199,6 @@ struct SettingsView: View {
                 Text("Zeige die ersten \(RepoSelection.displayLimit) von \(filtered.count) Treffern – Suche eingrenzen.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Text("Standard ohne Eintrag: \(hostDefault == .hidden ? "ausgeblendet" : "normal")")
-                .font(.caption).foregroundStyle(.secondary)
-
             HStack {
                 Text("Alle \(filtered.count) Treffer:").font(.caption).foregroundStyle(.secondary)
                 ForEach([RepoState.normal, .pinned, .hidden], id: \.self) { state in

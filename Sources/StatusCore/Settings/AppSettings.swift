@@ -78,6 +78,23 @@ public struct AppSettings: Codable, Equatable {
         if host != "github.com" { hostDefaults[host] = .hidden }
     }
 
+    /// Schaltet den Host-Standard für `host` um (Reiter „Repos“) – auch für `github.com`, das ohne
+    /// Eintrag über den Fallback in `RepoSelection.hostDefault` normal ist: Umschalten legt dann
+    /// den ersten expliziten Eintrag an.
+    ///
+    /// `shownRepos` ist nur unter einem ausgeblendeten Standard sinnvoll (der einzige Weg, ein
+    /// einzelnes Repo trotzdem auf normal zu stellen). Wechselt der Standard auf normal, sind
+    /// diese Einträge für `host` überflüssig – wirkungslos, weil normal ohnehin der Standard ist,
+    /// aber ohne Aufräumen würden sie bei einem späteren Zurückschalten auf ausgeblendet unerwartet
+    /// wieder genau diese Repos freischalten. Deshalb werden sie hier entfernt (Entscheidung
+    /// Florian, 28.09.2026, status-display#19 Nachbesserung).
+    public mutating func setHostDefault(_ def: RepoDefault, for host: String) {
+        hostDefaults[host] = def
+        if def == .normal {
+            shownRepos.removeAll { RepoSelection.repository(forKey: $0, host: host) != nil }
+        }
+    }
+
     /// Trimmt, entfernt ein führendes `https://`/`http://` und ein abschließendes `/`, kleinschreibt,
     /// und liefert nil, wenn das Ergebnis kein gültiger Hostname ist (leer, Leerzeichen, ungültige
     /// Zeichen, oder keine gültige URL damit bildbar).
