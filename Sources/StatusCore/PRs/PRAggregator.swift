@@ -93,13 +93,8 @@ public struct PRAggregator {
         }
 
         let hiddenSet = Set(hidden)
-        let shownSet = Set(shown)
-        // Nur Repos ohne jeden expliziten Eintrag (weder angeheftet noch ausgeblendet noch
-        // ausdrücklich normal) fallen unter den Host-Standard.
         let hostDefaultHidden = acc.keys.filter { key in
-            guard !pinnedSet.contains(key), !hiddenSet.contains(key), !shownSet.contains(key),
-                  let host = Self.host(ofKey: key) else { return false }
-            return RepoSelection.hostDefault(for: host, hostDefaults: hostDefaults) == .hidden
+            Self.isHidden(repoKey: key, pinned: pinned, hidden: hidden, shown: shown, hostDefaults: hostDefaults)
         }
         let effectivelyHidden = hiddenSet.union(hostDefaultHidden)
 
@@ -125,6 +120,18 @@ public struct PRAggregator {
         return PRZone(rows: sorted, ciFailingCount: totalCIFailing, lastSuccess: oldest,
                       isStale: missingHost || now.timeIntervalSince(oldest) > 3 * Self.refreshInterval,
                       hiddenReviews: hiddenReviews)
+    }
+
+    /// Ist `repoKey` (`host/owner/name`) ausgeblendet? Explizit in `hidden` (gewinnt auch gegen
+    /// ein inkonsistentes gleichzeitiges Anheften), oder ohne jeden expliziten Eintrag (weder
+    /// angeheftet noch ausgeblendet noch ausdrücklich normal) über den Host-Standard. Dieselbe
+    /// Regel, die `zone` anwendet – öffentlich, damit das Dashboard (status-display#24) sie nicht
+    /// nachbauen muss.
+    public static func isHidden(repoKey key: String, pinned: [String], hidden: [String], shown: [String],
+                                hostDefaults: [String: RepoDefault]) -> Bool {
+        if hidden.contains(key) { return true }
+        guard !pinned.contains(key), !shown.contains(key), let host = host(ofKey: key) else { return false }
+        return RepoSelection.hostDefault(for: host, hostDefaults: hostDefaults) == .hidden
     }
 
     private func group(_ row: PRRow, pinned: Set<String>) -> Int {

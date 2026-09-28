@@ -58,6 +58,7 @@ struct MenuContent: View {
             Text(model.displayState == .connected ? "Display verbunden" : "Display nicht gefunden")
         }
         if case .failed(let message) = model.serverState { Text("Server: \(message)") }
+        Button("Dashboard öffnen") { model.showDashboard() }
         Button("Board-Fenster anzeigen") { model.showBoardWindow() }
         SettingsOpener()
         Button("Beenden") { NSApp.terminate(nil) }

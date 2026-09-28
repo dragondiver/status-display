@@ -24,6 +24,14 @@ Die App ist ad-hoc signiert. Auf einem anderen Mac einmal per Rechtsklick →
    andere Konfiguration sie zuvor abgeschaltet hat.
 4. Optional: „Bei Anmeldung starten“.
 
+## Dashboard
+
+Menü → „Dashboard öffnen“: Fenster mit drei Spalten (Bereiche und Repos, Liste, Details) –
+Wartet auf dich, Code-Owner-Reviews, Deine PRs, Agenten, Schon freigegeben. Tastatur: ⌘R
+aktualisieren, ⌘1–⌘5 Bereiche, Enter/Doppelklick öffnet den PR. Solange Dashboard- oder
+Board-Fenster offen ist, zeigt die App ein Dock-Symbol. Designgrundlage: `PRODUCT.md` und
+`docs/design/dashboard-prototypen.html` (Entwurf B).
+
 ## Schnittstelle
 
 Alle Anfragen gehen an `http://127.0.0.1:47615` mit

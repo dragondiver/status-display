@@ -17,7 +17,13 @@ final class AppModel: ObservableObject {
     /// dasselbe `CGImage`, das auch ans AKP02 geht, ohne ein zweites Mal zu rendern.
     @Published private(set) var renderedBoardImage: CGImage?
     /// Ob das Board-Fenster aktuell sichtbar sein soll (siehe `updateBoardWindowVisibility`).
-    @Published private(set) var boardWindowVisible = false
+    @Published private(set) var boardWindowVisible = false {
+        didSet { updateActivationPolicy() }
+    }
+    /// Ob das Dashboard-Fenster (status-display#24) offen ist.
+    @Published private(set) var dashboardVisible = false {
+        didSet { updateActivationPolicy() }
+    }
     /// Rückgabe von IOHIDManagerOpen, falls der HID-Zugriff scheiterte (sonst nil).
     @Published private(set) var hidOpenError: IOReturn?
     @Published var settings: AppSettings {
@@ -33,7 +39,8 @@ final class AppModel: ObservableObject {
     private var server: HTTPServer?
     private var timers: [Timer] = []
     private var renderScheduled = false
-    private var prsRefreshRunning = false
+    /// Läuft gerade ein PR-Abruf? Fürs Dashboard (Fortschrittsanzeige neben „Aktualisieren“).
+    @Published private(set) var prsRefreshRunning = false
     private var prsRefreshPending = false
     private var reconnectScheduled = false
     private var lastReconnect: Date?
@@ -41,6 +48,11 @@ final class AppModel: ObservableObject {
     private lazy var boardWindowController: BoardWindowController = {
         let c = BoardWindowController()
         c.onUserClosed = { [weak self] in Task { @MainActor in self?.boardWindowClosedByUser() } }
+        return c
+    }()
+    private lazy var dashboardWindowController: DashboardWindowController = {
+        let c = DashboardWindowController(model: self)
+        c.onClosed = { [weak self] in Task { @MainActor in self?.dashboardVisible = false } }
         return c
     }()
     /// Vom Menüpunkt „Board-Fenster anzeigen“ gesetzt; hält das Fenster unter „Automatisch“ offen,
@@ -159,6 +171,21 @@ final class AppModel: ObservableObject {
         updateBoardWindowVisibility(activate: true)
     }
 
+    /// Menüpunkt „Dashboard öffnen“ (status-display#24). Erst das Dock-Symbol einschalten (über
+    /// `dashboardVisible`), dann aktivieren – so kommt das Fenster zuverlässig nach vorne.
+    func showDashboard() {
+        dashboardVisible = true
+        dashboardWindowController.show()
+    }
+
+    /// Die Listen des Dashboard-Fensters, aus demselben Zustand und denselben Repo-Einstellungen
+    /// wie Board und Menü.
+    func dashboard(now: Date) -> Dashboard {
+        Dashboard.build(prs: prs, agents: agents, now: now, hosts: settings.hosts, pinned: settings.pinnedRepos,
+                        hidden: settings.hiddenRepos, shown: settings.shownRepos,
+                        hostDefaults: settings.hostDefaults)
+    }
+
     func regenerateToken() {
         // Erst das neue Token erzeugen; der alte Server (der mit dem alten Token noch funktioniert)
         // wird nur bei Erfolg gestoppt. Sonst würde ein Fehlschlag den Server tot zurücklassen.
@@ -210,6 +237,15 @@ final class AppModel: ObservableObject {
     }
 
     // MARK: Intern
+
+    /// Dock-Symbol, solange Dashboard- oder Board-Fenster offen ist (`DockIconPolicy`), sonst
+    /// reine Menüleisten-App wie in `Info.plist` (`LSUIElement`).
+    private func updateActivationPolicy() {
+        let policy: NSApplication.ActivationPolicy =
+            DockIconPolicy.showsDockIcon(dashboardOpen: dashboardVisible, boardWindowOpen: boardWindowVisible)
+                ? .regular : .accessory
+        if NSApp.activationPolicy() != policy { NSApp.setActivationPolicy(policy) }
+    }
 
     /// Nach einem Schreibfehler neu anbinden, aber höchstens alle 5 s: scheitert das wieder
     /// angebundene Gerät sofort erneut, entsteht so keine enge Schleife.
