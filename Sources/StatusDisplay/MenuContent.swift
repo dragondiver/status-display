@@ -7,17 +7,7 @@ struct MenuContent: View {
 
     var body: some View {
         Text("\(model.status.preset.name) · \(BoardText.since(model.status.since, now: Date()))")
-        ForEach(model.presets) { preset in
-            Menu(preset.name) {
-                Button("Ohne Ende") { model.setStatus(preset.id, duration: nil) }
-                Button("30 Minuten") { model.setStatus(preset.id, duration: 1800) }
-                Button("1 Stunde") { model.setStatus(preset.id, duration: 3600) }
-                Button("2 Stunden") { model.setStatus(preset.id, duration: 7200) }
-                Button("Bis Tagesende") { model.setStatusUntilEndOfDay(preset.id) }
-            } primaryAction: {
-                model.setStatus(preset.id, duration: nil)
-            }
-        }
+        StatusMenuItems(model: model)
 
         Divider()
         Section("Agenten") {

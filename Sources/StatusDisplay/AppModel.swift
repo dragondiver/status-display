@@ -49,7 +49,7 @@ final class AppModel: ObservableObject {
     private let ownPid = ProcessInfo.processInfo.processIdentifier
     static let reconnectMinInterval: TimeInterval = 5
     private lazy var boardWindowController: BoardWindowController = {
-        let c = BoardWindowController()
+        let c = BoardWindowController(model: self)
         c.onUserClosed = { [weak self] in Task { @MainActor in self?.boardWindowClosedByUser() } }
         return c
     }()

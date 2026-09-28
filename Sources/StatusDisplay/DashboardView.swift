@@ -55,7 +55,16 @@ struct DashboardView: View {
                 }
                 .help("PRs aktualisieren (⌘R)")
                 .keyboardShortcut("r", modifiers: .command)
-                StatusChip(name: model.status.preset.name, color: model.status.preset.color)
+                Menu {
+                    StatusMenuItems(model: model)
+                } label: {
+                    StatusChip(name: model.status.preset.name, color: model.status.preset.color)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .onHover { inside in
+                    if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                }
             }
         }
         .background { sectionShortcuts }
