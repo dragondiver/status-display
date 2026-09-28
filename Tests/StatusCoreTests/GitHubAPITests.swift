@@ -143,7 +143,15 @@ final class GitHubAPITests: XCTestCase {
             {"number":7,"title":"Non-Code-Owner-Team ignoriert","url":"https://github.com/a/b/pull/7","repository":{"nameWithOwner":"a/b"},
              "author":{"login":"author1"},"commits":{"nodes":[]},
              "reviewRequests":{"nodes":[{"asCodeOwner":false,"requestedReviewer":{"__typename":"Team","name":"platform"}}]},
-             "reviews":{"nodes":[]}}
+             "reviews":{"nodes":[]}},
+            {"number":8,"title":"Eigene frühere Freigabe, erneut angefragt","url":"https://github.com/a/b/pull/8","repository":{"nameWithOwner":"a/b"},
+             "author":{"login":"author1"},"commits":{"nodes":[]},
+             "reviewRequests":{"nodes":[{"asCodeOwner":true,"requestedReviewer":{"__typename":"User","login":"florian"}}]},
+             "reviews":{"nodes":[{"author":{"login":"florian"},"state":"APPROVED"}]}},
+            {"number":9,"title":"Eigene frühere Freigabe plus fremde Freigabe","url":"https://github.com/a/b/pull/9","repository":{"nameWithOwner":"a/b"},
+             "author":{"login":"author1"},"commits":{"nodes":[]},
+             "reviewRequests":{"nodes":[{"asCodeOwner":true,"requestedReviewer":{"__typename":"User","login":"florian"}}]},
+             "reviews":{"nodes":[{"author":{"login":"florian"},"state":"APPROVED"},{"author":{"login":"other"},"state":"APPROVED"}]}}
           ]},
           "mine":{"nodes":[]}
         }}
@@ -169,5 +177,16 @@ final class GitHubAPITests: XCTestCase {
         XCTAssertFalse(byNumber[6]!.hasCodeOwnerRequestForMe)
 
         XCTAssertFalse(byNumber[7]!.needsMyReview, "Non-Code-Owner-Team-Anfrage wird ignoriert")
+
+        // Befund verifier, 28.09.2026: hasForeignApprovalOrChangesRequested schloss ursprünglich
+        // nur den PR-Autor aus, nicht den Viewer selbst – eine eigene frühere Freigabe zählte
+        // dadurch fälschlich als fremde Erledigung, sobald ich erneut als Code-Owner angefragt wurde.
+        XCTAssertTrue(byNumber[8]!.needsMyReview,
+                      "eine frühere eigene Freigabe erledigt eine erneute Code-Owner-Anfrage nicht")
+        XCTAssertFalse(byNumber[8]!.hasForeignApprovalOrChangesRequested)
+
+        XCTAssertFalse(byNumber[9]!.needsMyReview,
+                       "zusätzlich zur eigenen alten Freigabe erledigt eine fremde Freigabe die Anfrage")
+        XCTAssertTrue(byNumber[9]!.hasForeignApprovalOrChangesRequested)
     }
 }

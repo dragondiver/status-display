@@ -44,7 +44,8 @@ public enum GitHubAPI {
               let urlString = n.url, let url = URL(string: urlString) else { return nil }
         let state = n.commits?.nodes.last??.commit.statusCheckRollup?.state
         let (hasCodeOwner, hasExtra) = reviewRequestKinds(n.reviewRequests, viewerLogin: viewerLogin)
-        let hasForeignDecision = hasForeignApprovalOrChangesRequested(n.reviews, authorLogin: n.author?.login)
+        let hasForeignDecision = hasForeignApprovalOrChangesRequested(n.reviews, authorLogin: n.author?.login,
+                                                                      viewerLogin: viewerLogin)
         // Unbekannte/neue Enum-Werte decodiert Node.reviewDecision schon als nil (RawRepresentable-
         // Init schlägt fehl) – hier bleibt nur das Zusammenführen mit "Feld fehlt ganz".
         return PullRequest(number: number, title: title, repository: n.repository?.nameWithOwner ?? "",
@@ -79,13 +80,19 @@ public enum GitHubAPI {
         return (codeOwner, extra)
     }
 
-    /// Näherung „ein Code-Owner hat schon reviewt“: irgendjemand außer dem PR-Autor hat `APPROVED`
-    /// oder `CHANGES_REQUESTED` abgegeben. Ein Review ganz ohne bekannten Autor (z. B. gelöschter
-    /// Account) zählt vorsichtshalber als fremd.
-    private static func hasForeignApprovalOrChangesRequested(_ reviews: Reviews?, authorLogin: String?) -> Bool {
+    /// Näherung „ein Code-Owner hat schon reviewt“: irgendjemand außer dem PR-Autor **und außer mir
+    /// selbst** hat `APPROVED` oder `CHANGES_REQUESTED` abgegeben. Ohne den Ausschluss meines
+    /// eigenen Logins würde eine frühere eigene Freigabe fälschlich als fremde Erledigung zählen,
+    /// falls ich (z. B. nach einem neuen Commit) erneut als Code-Owner angefragt werde – die alte
+    /// Freigabe soll die neue Anfrage nicht stillschweigend abräumen (Befund verifier, 28.09.2026,
+    /// status-display#21). Ein Review ganz ohne bekannten Autor (z. B. gelöschter Account) zählt
+    /// vorsichtshalber als fremd.
+    private static func hasForeignApprovalOrChangesRequested(_ reviews: Reviews?, authorLogin: String?,
+                                                              viewerLogin: String?) -> Bool {
         (reviews?.nodes.compactMap { $0 } ?? []).contains { review in
             guard review.state == "APPROVED" || review.state == "CHANGES_REQUESTED" else { return false }
-            return review.author?.login != authorLogin
+            let reviewerLogin = review.author?.login
+            return reviewerLogin != authorLogin && reviewerLogin != viewerLogin
         }
     }
 
