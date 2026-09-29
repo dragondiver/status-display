@@ -2,26 +2,45 @@ import XCTest
 @testable import StatusCore
 
 final class HookSnippetsTests: XCTestCase {
+    private func command(_ json: String, event: String = "Stop") throws -> [String: Any] {
+        let obj = try JSONSerialization.jsonObject(with: Data(json.utf8)) as! [String: Any]
+        let hooks = obj["hooks"] as! [String: Any]
+        return ((hooks[event] as! [[String: Any]])[0]["hooks"] as! [[String: Any]])[0]
+    }
+
     func testClaudeHooksJSONShape() throws {
-        let json = HookSnippets.hooksJSON(executable: "/Applications/StatusDisplay.app/Contents/MacOS/StatusDisplay",
+        let json = HookSnippets.hooksJSON(entry: "/tmp/status-display/hook",
                                           source: "claude-code", events: HookSnippets.claudeEvents)
         let obj = try JSONSerialization.jsonObject(with: Data(json.utf8)) as! [String: Any]
         let hooks = obj["hooks"] as! [String: Any]
         XCTAssertEqual(Set(hooks.keys), Set(HookSnippets.claudeEvents))
-        let entry = ((hooks["Stop"] as! [[String: Any]])[0]["hooks"] as! [[String: Any]])[0]
+        let entry = try command(json)
         XCTAssertEqual(entry["type"] as? String, "command")
-        XCTAssertEqual(entry["command"] as? String, "'/Applications/StatusDisplay.app/Contents/MacOS/StatusDisplay' hook claude-code")
+        XCTAssertEqual(entry["command"] as? String, "'/tmp/status-display/hook' claude-code")
         XCTAssertEqual(entry["timeout"] as? Int, 2)
     }
 
-    func testExecutablePathWithSingleQuoteIsShellEscaped() throws {
-        let json = HookSnippets.hooksJSON(executable: "/Users/o'neil/Apps/Status Display.app/Contents/MacOS/StatusDisplay",
-                                          source: "claude-code", events: HookSnippets.claudeEvents)
-        let obj = try JSONSerialization.jsonObject(with: Data(json.utf8)) as! [String: Any]
-        let hooks = obj["hooks"] as! [String: Any]
-        let entry = ((hooks["Stop"] as! [[String: Any]])[0]["hooks"] as! [[String: Any]])[0]
+    /// status-display#42: Der Block zum Kopieren nennt den festen Einstieg, dessen Pfad wegen
+    /// „Application Support“ ein Leerzeichen enthält und deshalb gequotet sein muss.
+    func testFixedEntryWithSpaceIsQuotedForClaudeAndCodex() throws {
+        let entryPath = AppSupport(directory: URL(fileURLWithPath: "/Users/florian/Library/Application Support/status-display"))
+            .hookEntryURL.path
+        XCTAssertEqual(entryPath, "/Users/florian/Library/Application Support/status-display/hook")
+        let claude = try command(HookSnippets.hooksJSON(entry: entryPath, source: "claude-code",
+                                                        events: HookSnippets.claudeEvents))
+        XCTAssertEqual(claude["command"] as? String,
+                       "'/Users/florian/Library/Application Support/status-display/hook' claude-code")
+        let codex = try command(HookSnippets.hooksJSON(entry: entryPath, source: "codex",
+                                                       events: HookSnippets.codexEvents), event: "PermissionRequest")
+        XCTAssertEqual(codex["command"] as? String,
+                       "'/Users/florian/Library/Application Support/status-display/hook' codex")
+    }
+
+    func testEntryPathWithSingleQuoteIsShellEscaped() throws {
+        let entry = try command(HookSnippets.hooksJSON(entry: "/Users/o'neil/Library/Application Support/status-display/hook",
+                                                       source: "claude-code", events: HookSnippets.claudeEvents))
         XCTAssertEqual(entry["command"] as? String,
-                       "'/Users/o'\\''neil/Apps/Status Display.app/Contents/MacOS/StatusDisplay' hook claude-code")
+                       "'/Users/o'\\''neil/Library/Application Support/status-display/hook' claude-code")
     }
 
     func testMCPJSONContainsTokenHeader() throws {

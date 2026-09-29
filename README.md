@@ -56,6 +56,12 @@ kleingeschrieben).
     StatusDisplay display-test             # 15 s Farbfelder aufs Panel
     StatusDisplay version
 
+Die Hooks rufen die Binary nicht direkt auf, sondern den festen Einstieg
+`~/Library/Application Support/status-display/hook`. Die App schreibt dieses kleine
+Shell-Skript bei jedem Start neu (`exec '<Pfad der Binary>' hook "$@"`), damit ein Umzug
+der App die Einträge in `~/.claude`/`~/.codex` nicht bricht. Den Block zum Kopieren zeigen
+die Einstellungen im Reiter „Agenten“.
+
 ## Lizenz
 
 `Sources/StatusCore/Display/AKP02Protocol.swift` ist aus

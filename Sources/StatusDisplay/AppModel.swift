@@ -23,6 +23,9 @@ final class AppModel: ObservableObject {
     }
     /// Rückgabe von IOHIDManagerOpen, falls der HID-Zugriff scheiterte (sonst nil).
     @Published private(set) var hidOpenError: IOReturn?
+    /// Fehlermeldung, falls der feste Hook-Einstieg (status-display#42) nicht geschrieben werden
+    /// konnte. Der App-Start läuft trotzdem weiter; die Einstellungen zeigen einen Hinweis.
+    @Published private(set) var hookEntryError: String?
     @Published var settings: AppSettings {
         didSet { if settings != oldValue { settings.save(); apply(oldValue) } }
     }
@@ -85,6 +88,7 @@ final class AppModel: ObservableObject {
         display.onWriteFailure = { [weak self] in Task { @MainActor in self?.scheduleReconnect() } }
         let hidResult = transport.start()
         if hidResult != kIOReturnSuccess { hidOpenError = hidResult }
+        writeHookEntry()
         startServer()
 
         timers.append(Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
@@ -122,7 +126,8 @@ final class AppModel: ObservableObject {
     }
 
     var hasWaitingAgent: Bool { agents.contains { $0.state == .waiting } }
-    var executablePath: String { Bundle.main.executablePath ?? "StatusDisplay" }
+    /// Fester Einstieg für die Hook-Befehle, unabhängig vom Ort der App (status-display#42).
+    var hookEntryPath: String { support.hookEntryURL.path }
 
     // MARK: Aktionen
 
@@ -344,6 +349,21 @@ final class AppModel: ObservableObject {
         server?.stop()
         server = nil
         support.removeEndpointIfOwn(ownPid: ownPid) // bis der nächste Server `.ready` meldet, gehört der Port nicht mehr uns
+    }
+
+    /// Bei jedem Start: Der Einstieg zeigt danach auf die gerade laufende Binary, auch wenn die
+    /// App seit dem letzten Start verschoben wurde. Ein Fehler hält den Start nicht auf.
+    private func writeHookEntry() {
+        guard let executable = Bundle.main.executablePath else {
+            hookEntryError = "Pfad der App unbekannt"
+            return
+        }
+        do {
+            try support.writeHookEntry(executable: executable)
+            hookEntryError = nil
+        } catch {
+            hookEntryError = error.localizedDescription
+        }
     }
 
     private func startServer() {

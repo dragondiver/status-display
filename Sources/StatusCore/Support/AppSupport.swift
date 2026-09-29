@@ -32,6 +32,10 @@ public struct AppSupport {
 
     public var tokenURL: URL { directory.appendingPathComponent("token") }
     public var endpointURL: URL { directory.appendingPathComponent("endpoint.json") }
+    /// Fester Einstieg für die Hook-Befehle in `~/.claude`/`~/.codex` (status-display#42). Er leitet
+    /// an die Binary weiter, die ihn zuletzt geschrieben hat; ein Umzug der App bricht die Hooks
+    /// damit nicht, der nächste Start korrigiert den Einstieg.
+    public var hookEntryURL: URL { directory.appendingPathComponent("hook") }
 
     public func loadOrCreateToken() throws -> String {
         if let t = readToken() {
@@ -53,17 +57,35 @@ public struct AppSupport {
         return token
     }
 
-    /// Schreibt über eine temporäre Datei mit 0600 von Anfang an (kein Fenster mit weiteren Rechten)
-    /// und ersetzt die Zieldatei atomar.
-    private func writeSecurely(_ data: Data, to url: URL) throws {
+    /// Inhalt des festen Einstiegs: ein Shell-Skript (kein Symlink), das mit dem gequoteten
+    /// absoluten Pfad der Binary `hook` und alle eigenen Argumente weiterreicht.
+    public static func hookEntryScript(executable: String) -> String {
+        """
+        #!/bin/sh
+        # Von status-display bei jedem Start geschrieben (status-display#42). Nicht von Hand ändern.
+        exec \(HookSnippets.shellQuoted(executable)) hook "$@"
+
+        """
+    }
+
+    /// Schreibt den festen Einstieg atomar mit 0700 (nur für den Besitzer ausführbar).
+    public func writeHookEntry(executable: String) throws {
+        try ensureDirectory()
+        try writeSecurely(Data(Self.hookEntryScript(executable: executable).utf8), to: hookEntryURL,
+                          permissions: 0o700)
+    }
+
+    /// Schreibt über eine temporäre Datei mit den Zielrechten von Anfang an (kein Fenster mit
+    /// weiteren Rechten) und ersetzt die Zieldatei atomar.
+    private func writeSecurely(_ data: Data, to url: URL, permissions: Int = 0o600) throws {
         let tempURL = url.deletingLastPathComponent()
             .appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
         guard FileManager.default.createFile(atPath: tempURL.path, contents: data,
-                                              attributes: [.posixPermissions: 0o600]) else {
+                                              attributes: [.posixPermissions: permissions]) else {
             throw CocoaError(.fileWriteUnknown)
         }
         _ = try FileManager.default.replaceItemAt(url, withItemAt: tempURL)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        try FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: url.path)
     }
 
     public func readToken() -> String? {
