@@ -68,7 +68,28 @@ final class PRAggregatorTests: XCTestCase {
                             fetchedAt: t0))
         let z = a.zone(now: t0, hosts: ["github.com"])
         XCTAssertEqual(z.ciFailingCount, 1)
-        XCTAssertEqual(z.rows, [PRRow(repoKey: "github.com/a/b", repository: "b", toReview: 0, mine: 2, ciFailing: true)])
+        XCTAssertEqual(z.rows, [PRRow(repoKey: "github.com/a/b", repository: "b", toReview: 0, mine: 1, ciFailing: true)])
+    }
+
+    /// Entscheidung Florian, 29.09.2026, status-display#44: Drafts zählen nicht in „eigene offen“.
+    func testDraftDoesNotCountAsOwnOpenPR() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "github.com", toReview: [],
+                            mine: [pr(1, repository: "f/rundfunk", draft: true), pr(2, repository: "f/rundfunk")],
+                            fetchedAt: t0))
+        let z = a.zone(now: t0, hosts: ["github.com"])
+        XCTAssertEqual(z.rows, [PRRow(repoKey: "github.com/f/rundfunk", repository: "rundfunk",
+                                      toReview: 0, mine: 1, ciFailing: false)])
+    }
+
+    func testRepoWithOnlyDraftsKeepsRowWithZero() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "github.com", toReview: [],
+                            mine: [pr(1, repository: "f/rundfunk", draft: true)], fetchedAt: t0))
+        XCTAssertEqual(a.zone(now: t0, hosts: ["github.com"]).rows,
+                       [PRRow(repoKey: "github.com/f/rundfunk", repository: "rundfunk",
+                              toReview: 0, mine: 0, ciFailing: false)],
+                       "Repo nur mit Draft: Zeile bleibt, auch ohne Anheften, mit mine == 0")
     }
 
     func testConfiguredHostWithoutSnapshotMakesZoneStale() {
