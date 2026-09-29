@@ -29,7 +29,8 @@ public struct PRAggregator {
     /// `pinned`, `hidden` und `shown` sind Einträge der Form `host/owner/name` (siehe
     /// `AppSettings.pinnedRepos`/`hiddenRepos`/`shownRepos`), `hostDefaults` der Host-Standard
     /// (`AppSettings.hostDefaults`). Angeheftete Repos erscheinen immer, auch mit 0/0; andere Repos
-    /// nur, sobald dort ein Review-Request oder ein eigener offener PR liegt. Ausgeblendet ist ein
+    /// nur, sobald dort ein Review-Request oder ein eigener offener PR liegt (auch ein Draft; der
+    /// zählt aber nicht in `PRRow.mine`, status-display#44). Ausgeblendet ist ein
     /// Repo, wenn es explizit in `hidden` steht (das gilt auch, wenn es – inkonsistenterweise –
     /// zugleich angeheftet wäre), oder wenn keine der drei Listen einen Eintrag für es hat und der
     /// Host-Standard „ausgeblendet“ ist. Sortierung der sichtbaren Zeilen: zuerst `toReview > 0`,
@@ -78,7 +79,10 @@ public struct PRAggregator {
             }
             for pr in snapshot.mine {
                 let key = repoKey(host: snapshot.host, repository: pr.repository)
-                acc[key, default: Acc(repository: pr.repository)].mine += 1
+                // Die Zeile entsteht für jeden eigenen PR, auch für einen Draft; nur die Zahl
+                // „eigene offen“ zählt keine Drafts (Entscheidung Florian, 29.09.2026,
+                // status-display#44). Ein Repo nur mit Drafts steht also mit `mine == 0` da.
+                acc[key, default: Acc(repository: pr.repository)].mine += pr.isDraft ? 0 : 1
                 if pr.ciFailing && !pr.isDraft {
                     acc[key, default: Acc(repository: pr.repository)].ciFailing = true
                     totalCIFailing += 1

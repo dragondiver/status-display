@@ -76,6 +76,15 @@ final class DashboardTests: XCTestCase {
         XCTAssertTrue(draftRed.tags.contains(.draft))
     }
 
+    /// status-display#44: Drafts zählen auf dem Display nicht mehr in „eigene offen“, bleiben aber in
+    /// „Deine PRs“ sichtbar, mit dem Tag `.draft` – auch in einem Repo, das nur Drafts hat.
+    func testDraftStaysInMineWithDraftTagEvenInDraftOnlyRepo() {
+        let d = build(mine: [pr(1, draft: true)])
+        XCTAssertEqual(numbers(d.mine), ["m1"])
+        XCTAssertEqual(d.mine.first?.tags, [.draft])
+        XCTAssertEqual(d.count(.mine), 1)
+    }
+
     func testOnlyWaitingAgentsGoToWaiting() {
         let d = build(agents: [agent("w", .waiting), agent("e", .error), agent("r", .running),
                                agent("s", .running, stale: true), agent("d", .done)])

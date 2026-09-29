@@ -68,7 +68,9 @@ Mit der Python-Library [deonspengler/akp02](https://github.com/deonspengler/akp0
   ohne Eintrag, den Standard seines Hosts (`hostDefaults`): `github.com` ist
   normal, jeder andere Host ist ausgeblendet. Angeheftete Repos erscheinen
   immer, auch mit 0/0; andere Repos nur bei Review-Request oder eigenem
-  offenem PR; ausgeblendete nie. Sortierung: zuerst „zu reviewen" > 0, dann
+  offenem PR; ausgeblendete nie. Drafts zählen nicht in „eigene offen"; ein
+  eigener Draft hält die Zeile seines Repos aber sichtbar (dann mit 0), und
+  Menü und Dashboard („Deine PRs") zeigen ihn weiter mit „Draft" (#44). Sortierung: zuerst „zu reviewen" > 0, dann
   angeheftet, dann der Rest. Höchstens 5 Zeilen, danach „+N weitere". Gibt es
   Review-Requests an Florian in ausgeblendeten Repos, reserviert die Tabelle
   dafür immer eine eigene, nie abgeschnittene letzte Zeile „Ausgeblendet · N
