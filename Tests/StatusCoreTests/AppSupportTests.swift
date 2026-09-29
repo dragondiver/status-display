@@ -118,4 +118,73 @@ final class AppSupportTests: XCTestCase {
         try s.writeRepoCache(RepoCache(repos: ["a/b", "a/c"], fetchedAt: Date(timeIntervalSince1970: 2)), host: "github.com")
         XCTAssertEqual(s.readRepoCache(host: "github.com")?.repos, ["a/b", "a/c"])
     }
+
+    // MARK: Fester Hook-Einstieg (status-display#42)
+
+    private func permissions(_ url: URL) throws -> Int? {
+        try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int
+    }
+
+    func testHookEntryIsShellScriptWithQuotedPathAndOwnerOnlyExecutable() throws {
+        let s = temp()
+        let exe = "/Users/o'neil/Apps/Status Display.app/Contents/MacOS/StatusDisplay"
+        try s.writeHookEntry(executable: exe)
+        XCTAssertEqual(s.hookEntryURL.lastPathComponent, "hook")
+        let script = try String(contentsOf: s.hookEntryURL, encoding: .utf8)
+        XCTAssertTrue(script.hasPrefix("#!/bin/sh\n"))
+        XCTAssertTrue(script.contains("\nexec '/Users/o'\\''neil/Apps/Status Display.app/Contents/MacOS/StatusDisplay' hook \"$@\"\n"),
+                      script)
+        XCTAssertEqual(try permissions(s.hookEntryURL), 0o700)
+        XCTAssertEqual(try permissions(s.directory), 0o700)
+        // kein Symlink, sondern eine echte Datei
+        let type = try FileManager.default.attributesOfItem(atPath: s.hookEntryURL.path)[.type] as? FileAttributeType
+        XCTAssertEqual(type, .typeRegular)
+    }
+
+    func testSecondWriteWithOtherPathOverwritesEntry() throws {
+        let s = temp()
+        try s.writeHookEntry(executable: "/Applications/StatusDisplay.app/Contents/MacOS/StatusDisplay")
+        try s.writeHookEntry(executable: "/Users/florian/Downloads/StatusDisplay.app/Contents/MacOS/StatusDisplay")
+        let script = try String(contentsOf: s.hookEntryURL, encoding: .utf8)
+        XCTAssertTrue(script.contains("'/Users/florian/Downloads/StatusDisplay.app/Contents/MacOS/StatusDisplay'"))
+        XCTAssertFalse(script.contains("/Applications/"))
+        XCTAssertEqual(try permissions(s.hookEntryURL), 0o700)
+        // keine liegen gebliebenen Temporärdateien
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: s.directory.path).filter { $0.hasSuffix(".tmp") }
+        XCTAssertEqual(leftovers, [])
+    }
+
+    func testHookEntryRepairsLoosePermissions() throws {
+        let s = temp()
+        try s.writeHookEntry(executable: "/a/StatusDisplay")
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: s.hookEntryURL.path)
+        try s.writeHookEntry(executable: "/a/StatusDisplay")
+        XCTAssertEqual(try permissions(s.hookEntryURL), 0o700)
+    }
+
+    /// Führt den geschriebenen Einstieg wirklich aus: Ein Stub an einem Pfad mit Leerzeichen und `'`
+    /// gibt seine Argumente zeilenweise aus.
+    func testHookEntryForwardsHookAndArgumentsToExecutable() throws {
+        let s = temp()
+        let stubDir = s.directory.deletingLastPathComponent()
+            .appendingPathComponent("stub \(UUID().uuidString) o'neil")
+        try FileManager.default.createDirectory(at: stubDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: stubDir) }
+        let stub = stubDir.appendingPathComponent("Status Display")
+        XCTAssertTrue(FileManager.default.createFile(atPath: stub.path,
+                                                     contents: Data("#!/bin/sh\nprintf '%s\\n' \"$@\"\n".utf8),
+                                                     attributes: [.posixPermissions: 0o700]))
+        try s.writeHookEntry(executable: stub.path)
+
+        let process = Process()
+        process.executableURL = s.hookEntryURL
+        process.arguments = ["claude-code", "mit leerzeichen"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        try process.run()
+        process.waitUntilExit()
+        let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(process.terminationStatus, 0)
+        XCTAssertEqual(output, "hook\nclaude-code\nmit leerzeichen\n")
+    }
 }

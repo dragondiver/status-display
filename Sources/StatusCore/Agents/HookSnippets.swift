@@ -13,8 +13,10 @@ public enum HookSnippets {
     /// gibt es keinen Schalter zum expliziten Einschalten, nur einen zum Abschalten.
     public static let codexFeatureFlag = "[features]\nhooks = true"
 
-    public static func hooksJSON(executable: String, source: String, events: [String]) -> String {
-        let command = "\(shellQuoted(executable)) hook \(source)"
+    /// `entry` ist der feste Einstieg (`AppSupport.hookEntryURL`, status-display#42), der selbst
+    /// schon `hook` an die Binary weiterreicht. Der Befehl lautet deshalb `'<entry>' <source>`.
+    public static func hooksJSON(entry: String, source: String, events: [String]) -> String {
+        let command = "\(shellQuoted(entry)) \(source)"
         var hooks: [String: Any] = [:]
         for event in events {
             hooks[event] = [["hooks": [["type": "command", "command": command, "timeout": 2]]]]
@@ -33,7 +35,7 @@ public enum HookSnippets {
 
     /// Einzeln in Anführungszeichen für die Shell, mit Escaping enthaltener `'` (POSIX-Standardtrick:
     /// `'` schließt die Anführung, `\'` fügt das Zeichen literal ein, `'` öffnet sie wieder).
-    private static func shellQuoted(_ value: String) -> String {
+    static func shellQuoted(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 

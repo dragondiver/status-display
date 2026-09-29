@@ -138,11 +138,15 @@ struct SettingsView: View {
                     Text("Token: \(String(model.token.prefix(8)))…")
                     Button("Neu erzeugen") { model.regenerateToken() }
                 }
+                if let hookEntryError = model.hookEntryError {
+                    Text("Hook-Einstieg konnte nicht geschrieben werden: \(hookEntryError)")
+                        .foregroundStyle(.red)
+                }
                 snippet("Claude Code – in ~/.claude/settings.json einfügen",
-                        HookSnippets.hooksJSON(executable: model.executablePath, source: "claude-code",
+                        HookSnippets.hooksJSON(entry: model.hookEntryPath, source: "claude-code",
                                                events: HookSnippets.claudeEvents))
                 snippet("Codex – ~/.codex/hooks.json",
-                        HookSnippets.hooksJSON(executable: model.executablePath, source: "codex",
+                        HookSnippets.hooksJSON(entry: model.hookEntryPath, source: "codex",
                                                events: HookSnippets.codexEvents))
                 snippet("Codex – ~/.codex/config.toml (falls nötig)", HookSnippets.codexFeatureFlag)
                 snippet("MCP (Copilot u. a.) – Eintrag in der MCP-Konfiguration",
