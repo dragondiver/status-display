@@ -64,10 +64,12 @@ public struct BoardState: Equatable {
     public var agents: [AgentActivity]
     public var prs: PRZone
     public var now: Date
+    public var nextMeeting: MeetingInfo?
 
     public init(statusName: String, statusColor: RGBColor, statusSince: Date,
-                agents: [AgentActivity], prs: PRZone, now: Date) {
+                agents: [AgentActivity], prs: PRZone, now: Date,
+                nextMeeting: MeetingInfo? = nil) {
         self.statusName = statusName; self.statusColor = statusColor; self.statusSince = statusSince
-        self.agents = agents; self.prs = prs; self.now = now
+        self.agents = agents; self.prs = prs; self.now = now; self.nextMeeting = nextMeeting
     }
 }
