@@ -54,6 +54,15 @@ public enum BoardText {
         return min(maxSize, estimated.rounded(.down))
     }
 
+    public static func meetingCountdown(_ meeting: MeetingInfo, now: Date,
+                                        timeZone: TimeZone = .current) -> String {
+        let secs = meeting.startDate.timeIntervalSince(now)
+        if secs <= 0 { return "Jetzt" }
+        let minutes = Int(ceil(secs / 60))
+        if minutes <= 60 { return "In \(minutes) min" }
+        return clock(meeting.startDate, timeZone: timeZone)
+    }
+
     public static func clock(_ date: Date, timeZone: TimeZone = .current) -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "de_DE")
