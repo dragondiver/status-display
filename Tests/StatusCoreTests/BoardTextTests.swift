@@ -98,4 +98,42 @@ final class BoardTextTests: XCTestCase {
     func testClock() {
         XCTAssertEqual(BoardText.clock(t0, timeZone: TimeZone(identifier: "UTC")!), "14:13")
     }
+
+    // MARK: meetingCountdown
+
+    private func meeting(startOffset: TimeInterval, endOffset: TimeInterval = 3600) -> MeetingInfo {
+        MeetingInfo(title: "x", startDate: t0.addingTimeInterval(startOffset),
+                    endDate: t0.addingTimeInterval(endOffset))
+    }
+
+    func testMeetingCountdownJetzt() {
+        XCTAssertEqual(BoardText.meetingCountdown(meeting(startOffset: -300, endOffset: 3000), now: t0), "Jetzt")
+    }
+
+    func testMeetingCountdownExactlyNow() {
+        XCTAssertEqual(BoardText.meetingCountdown(meeting(startOffset: 0), now: t0), "Jetzt")
+    }
+
+    func testMeetingCountdownOneMinute() {
+        XCTAssertEqual(BoardText.meetingCountdown(meeting(startOffset: 30), now: t0), "In 1 min")
+    }
+
+    func testMeetingCountdownMinutes() {
+        // ceil(23*60+5 / 60) = ceil(23.08) = 24
+        XCTAssertEqual(BoardText.meetingCountdown(meeting(startOffset: 23 * 60 + 5), now: t0), "In 24 min")
+    }
+
+    func testMeetingCountdownSixtyMinutes() {
+        XCTAssertEqual(BoardText.meetingCountdown(meeting(startOffset: 60 * 60), now: t0), "In 60 min")
+    }
+
+    func testMeetingCountdownShowsClockWhenMoreThan60Min() {
+        let tz = TimeZone(identifier: "UTC")!
+        let start = t0.addingTimeInterval(90 * 60)
+        let m = MeetingInfo(title: "x", startDate: start, endDate: start.addingTimeInterval(3600))
+        let result = BoardText.meetingCountdown(m, now: t0, timeZone: tz)
+        XCTAssertEqual(result, BoardText.clock(start, timeZone: tz))
+        XCTAssertFalse(result.hasPrefix("In"))
+        XCTAssertNotEqual(result, "Jetzt")
+    }
 }
