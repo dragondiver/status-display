@@ -30,7 +30,9 @@ final class AppModel: ObservableObject {
         didSet { if settings != oldValue { settings.save(); apply(oldValue) } }
     }
 
+    @Published private(set) var nextMeeting: MeetingInfo?
     let statusStore = StatusStore()
+    private let calendarService: MeetingProvider
     private let registry = AgentRegistry(time: SystemTime())
     private let display: DisplayController
     private let transport = AKP02Transport()
@@ -68,7 +70,8 @@ final class AppModel: ObservableObject {
     /// Display gilt beim Start zunächst als „nicht verbunden“, bis IOKit sich meldet.
     private let startupTime = Date()
 
-    init() {
+    init(calendarService: MeetingProvider = CalendarService()) {
+        self.calendarService = calendarService
         let settings = AppSettings.load()
         self.settings = settings
         display = DisplayController(brightness: settings.brightness)
@@ -281,6 +284,7 @@ final class AppModel: ObservableObject {
     private func refreshLocal() {
         status = statusStore.effective()
         agents = registry.snapshot()
+        nextMeeting = calendarService.nextMeeting(now: Date())
         scheduleRender()
     }
 
@@ -298,7 +302,8 @@ final class AppModel: ObservableObject {
                                    prs: prs.zone(now: now, hosts: settings.hosts,
                                                 pinned: settings.pinnedRepos, hidden: settings.hiddenRepos,
                                                 shown: settings.shownRepos, hostDefaults: settings.hostDefaults),
-                                   now: now)
+                                   now: now,
+                                   nextMeeting: nextMeeting)
             // Das Board-Fenster zeichnet denselben Zustand selbst in Fenstergröße (status-display#38);
             // das 1920×462-Bild geht nur noch ans AKP02.
             self.boardWindowController.update(state: state)
