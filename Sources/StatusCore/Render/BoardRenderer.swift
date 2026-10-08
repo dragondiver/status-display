@@ -39,6 +39,12 @@ public enum BoardRenderer {
             text(ctx, w, x: 40, baseline: baseline, size: size, bold: true, color: white)
             baseline += size + 8
         }
+        if let m = s.nextMeeting {
+            text(ctx, BoardText.meetingCountdown(m, now: s.now),
+                 x: 40, baseline: 280, size: 34, color: muted)
+            text(ctx, BoardText.truncate(m.title, max: 18),
+                 x: 40, baseline: 322, size: 34, color: white.withAlpha(0.85))
+        }
         // Uhr unten links in der Statuszone: 72 pt fett, darunter „seit …" kleiner.
         text(ctx, BoardText.clock(s.now), x: 40, baseline: 400, size: 72, bold: true, color: white)
         text(ctx, BoardText.since(s.statusSince, now: s.now), x: 40, baseline: 438, size: 30,
