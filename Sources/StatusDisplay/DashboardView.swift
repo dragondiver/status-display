@@ -460,12 +460,13 @@ private struct DashboardDetail: View {
 
     @ViewBuilder
     private func ciSymbol(_ pr: PullRequest) -> some View {
-        if let checks = pr.checks, checks.failed > 0 {
+        switch DashboardText.ciSymbol(pr) {
+        case .failed:
             Image(systemName: "xmark.circle.fill").foregroundStyle(.red).accessibilityHidden(true)
-        } else if pr.ciFailing {
-            Image(systemName: "xmark.circle.fill").foregroundStyle(.red).accessibilityHidden(true)
-        } else if let checks = pr.checks, checks.total > 0, checks.other == 0 {
+        case .passed:
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).accessibilityHidden(true)
+        case .none:
+            EmptyView()
         }
     }
 

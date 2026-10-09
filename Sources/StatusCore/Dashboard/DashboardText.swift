@@ -71,6 +71,17 @@ public enum DashboardText {
         return parts.joined(separator: " · ")
     }
 
+    /// Zustand des CI-Symbols im Detailbereich. Rot nie bei Drafts (wie das Etikett `ciFailing`
+    /// und die Board-Zahl, status-display#31); ein Draft mit roten Checks bekommt auch kein Grün.
+    public enum CISymbol: Equatable { case failed, passed, none }
+
+    public static func ciSymbol(_ pr: PullRequest) -> CISymbol {
+        let red = (pr.checks?.failed ?? 0) > 0 || pr.ciFailing
+        if red { return pr.isDraft ? .none : .failed }
+        if let c = pr.checks, c.total > 0, c.other == 0 { return .passed }
+        return .none
+    }
+
     /// „Änderungen“: „5 Dateien · +7 −7“ – fehlende Teile entfallen, ganz ohne Angaben „unbekannt“.
     public static func size(_ pr: PullRequest) -> String {
         var parts: [String] = []

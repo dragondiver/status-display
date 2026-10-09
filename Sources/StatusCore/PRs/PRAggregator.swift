@@ -60,9 +60,8 @@ public struct PRAggregator {
         guard let oldest = all.map(\.fetchedAt).min() else { return .unknown }
         let missingHost = hosts.contains { snapshots[$0] == nil }
 
-        struct Acc { var repository: String; var toReview = 0; var mine = 0; var ciFailing = false; var hasExtraReview = false }
+        struct Acc { var repository: String; var toReview = 0; var mine = 0; var ciFailing = false; var ciFailingCount = 0; var hasExtraReview = false }
         var acc: [String: Acc] = [:]
-        var totalCIFailing = 0
         var reviewsByKey: [String: [PullRequest]] = [:]
         var approvedByKey: [String: [PullRequest]] = [:]
 
@@ -85,7 +84,7 @@ public struct PRAggregator {
                 acc[key, default: Acc(repository: pr.repository)].mine += pr.isDraft ? 0 : 1
                 if pr.ciFailing && !pr.isDraft {
                     acc[key, default: Acc(repository: pr.repository)].ciFailing = true
-                    totalCIFailing += 1
+                    acc[key, default: Acc(repository: pr.repository)].ciFailingCount += 1
                 }
             }
         }
@@ -109,6 +108,9 @@ public struct PRAggregator {
             approvedByKey.removeValue(forKey: key)
         }
         hiddenReviews.sort { $0.repository != $1.repository ? $0.repository < $1.repository : $0.number < $1.number }
+
+        // Erst nach dem Ausblenden zählen: Board und Dashboard zeigen dieselbe Zahl (status-display#31).
+        let totalCIFailing = acc.values.reduce(0) { $0 + $1.ciFailingCount }
 
         let rows = acc.map { key, a in
             let approved = (approvedByKey[key] ?? []).sorted { $0.number < $1.number }
