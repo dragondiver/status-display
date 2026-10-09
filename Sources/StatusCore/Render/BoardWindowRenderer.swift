@@ -51,6 +51,14 @@ public enum BoardWindowRenderer {
              color: R.white, maxWidth: maxWidth)
         text(ctx, BoardText.since(s.statusSince, now: s.now), x: x, baseline: l.sinceBaseline, size: F.since,
              color: R.white.withAlpha(0.8), maxWidth: maxWidth)
+        if let m = s.nextMeeting,
+           let countdownBaseline = l.meetingCountdownBaseline,
+           let titleBaseline = l.meetingTitleBaseline {
+            text(ctx, BoardText.meetingCountdown(m, now: s.now),
+                 x: x, baseline: countdownBaseline, size: F.row, color: R.muted, maxWidth: maxWidth)
+            text(ctx, BoardText.truncate(m.title, max: 22),
+                 x: x, baseline: titleBaseline, size: F.row, color: R.white.withAlpha(0.85), maxWidth: maxWidth)
+        }
     }
 
     private static func drawAgents(_ ctx: CGContext, _ s: BoardState, _ l: BoardWindowLayout, _ zone: CGRect) {

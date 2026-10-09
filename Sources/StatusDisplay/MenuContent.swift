@@ -7,6 +7,14 @@ struct MenuContent: View {
 
     var body: some View {
         Text("\(model.status.preset.name) · \(BoardText.since(model.status.since, now: Date()))")
+        if let m = model.nextMeeting {
+            let label = "\(BoardText.meetingCountdown(m, now: Date())) · \(m.title)"
+            if let url = m.joinURL {
+                Button(label) { NSWorkspace.shared.open(url) }
+            } else {
+                Text(label).foregroundStyle(.secondary)
+            }
+        }
         StatusMenuItems(model: model)
 
         Divider()

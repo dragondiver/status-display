@@ -62,6 +62,8 @@ public struct BoardWindowLayout: Equatable {
     public let statusBaselines: [CGFloat]
     public let clockBaseline: CGFloat
     public let sinceBaseline: CGFloat
+    public let meetingCountdownBaseline: CGFloat?
+    public let meetingTitleBaseline: CGFloat?
 
     // MARK: Tabellen
 
@@ -109,6 +111,23 @@ public struct BoardWindowLayout: Equatable {
         statusBaselines = words.indices.map { pad + fontSize + CGFloat($0) * (fontSize + 3) }
         sinceBaseline = h - 6
         clockBaseline = sinceBaseline - FontSize.since - 5
+
+        // Meeting-Baselines: zwischen letztem Statuswort und Uhr, nur wenn Platz vorhanden.
+        if state.nextMeeting != nil {
+            let titleBase = clockBaseline - FontSize.since - 8 - FontSize.row
+            let countdownBase = titleBase - FontSize.row - 3
+            let minBase = (statusBaselines.last ?? 0) + 8
+            if countdownBase > minBase {
+                meetingTitleBaseline = titleBase
+                meetingCountdownBaseline = countdownBase
+            } else {
+                meetingTitleBaseline = nil
+                meetingCountdownBaseline = nil
+            }
+        } else {
+            meetingTitleBaseline = nil
+            meetingCountdownBaseline = nil
+        }
 
         // Tabellen
         let usable = h - Self.bottomInset - Self.firstRowBaseline

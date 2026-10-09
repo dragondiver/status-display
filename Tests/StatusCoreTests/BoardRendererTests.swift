@@ -161,4 +161,41 @@ final class BoardRendererTests: XCTestCase {
         XCTAssertTrue(withExtraSawAmber, "die Zahl in der Hinweiszeile ist orange, wenn eine Extra-Anfrage darunter ist")
         XCTAssertFalse(withoutExtraSawAmber, "ohne Extra-Anfrage bleibt die Hinweiszeile grau")
     }
+
+    // MARK: Meeting-Zeilen
+
+    private func meetingState(startOffset: TimeInterval = 23 * 60) -> BoardState {
+        let meeting = MeetingInfo(title: "Stand-up",
+                                  startDate: t0.addingTimeInterval(startOffset),
+                                  endDate:   t0.addingTimeInterval(startOffset + 3600))
+        return BoardState(statusName: "Deep Focus", statusColor: RGBColor(hex: "#FF0000")!,
+                          statusSince: t0, agents: [], prs: .unknown,
+                          now: t0, nextMeeting: meeting)
+    }
+
+    func testMeetingCountdownZeileIstSichtbar() {
+        // Countdown-Text nutzt `muted` (#8C8C96 = grau) auf rotem Hintergrund.
+        let img = BoardRenderer.render(meetingState())
+        var sawGreyish = false
+        for y in 250...290 {
+            for x in stride(from: 40, to: 200, by: 3) {
+                if isGreyish(pixel(img, x, y)) { sawGreyish = true }
+            }
+        }
+        XCTAssertTrue(sawGreyish, "Countdown-Zeile (muted) zeichnet greyish-Pixel im Bereich y=250..290")
+    }
+
+    func testKeinMeetingKeineGreyishPixelImMeetingBereich() {
+        let state = BoardState(statusName: "Deep Focus", statusColor: RGBColor(hex: "#FF0000")!,
+                               statusSince: t0, agents: [], prs: .unknown, now: t0,
+                               nextMeeting: nil)
+        let img = BoardRenderer.render(state)
+        var sawGreyish = false
+        for y in 250...290 {
+            for x in stride(from: 40, to: 200, by: 3) {
+                if isGreyish(pixel(img, x, y)) { sawGreyish = true }
+            }
+        }
+        XCTAssertFalse(sawGreyish, "Ohne Meeting keine greyish-Pixel im Meeting-Bereich")
+    }
 }

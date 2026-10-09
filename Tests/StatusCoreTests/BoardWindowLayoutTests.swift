@@ -209,4 +209,53 @@ final class BoardWindowLayoutTests: XCTestCase {
         }
         XCTAssertTrue(sawWhite)
     }
+
+    // MARK: Meeting-Baselines
+
+    private func meetingState(size: CGSize) -> BoardWindowLayout {
+        let m = MeetingInfo(title: "Stand-up",
+                            startDate: t0.addingTimeInterval(23 * 60),
+                            endDate:   t0.addingTimeInterval(83 * 60))
+        let s = BoardState(statusName: "Deep Focus", statusColor: RGBColor(hex: "#FF0000")!,
+                           statusSince: t0, agents: [], prs: .unknown, now: t0, nextMeeting: m)
+        return BoardWindowLayout(state: s, size: size)
+    }
+
+    private func noMeetingLayout(size: CGSize) -> BoardWindowLayout {
+        let s = BoardState(statusName: "Deep Focus", statusColor: RGBColor(hex: "#FF0000")!,
+                           statusSince: t0, agents: [], prs: .unknown, now: t0, nextMeeting: nil)
+        return BoardWindowLayout(state: s, size: size)
+    }
+
+    func testMeetingBaselinesNichtNilBeiAusreichendHohemFenster() {
+        // h=150 gibt genug Raum zwischen letztem Statuswort (baseline≈43) und countdown (≈82).
+        let l = meetingState(size: CGSize(width: 600, height: 150))
+        XCTAssertNotNil(l.meetingCountdownBaseline)
+        XCTAssertNotNil(l.meetingTitleBaseline)
+    }
+
+    func testMeetingBaselinesNilOhneMeeting() {
+        let l = noMeetingLayout(size: CGSize(width: 600, height: 150))
+        XCTAssertNil(l.meetingCountdownBaseline)
+        XCTAssertNil(l.meetingTitleBaseline)
+    }
+
+    func testMeetingBaselinesNilBeiZuKleinerHoehe() {
+        let l = meetingState(size: CGSize(width: 600, height: 40))
+        XCTAssertNil(l.meetingCountdownBaseline)
+    }
+
+    func testMeetingCountdownBaselineUnterStatusWorten() {
+        let l = meetingState(size: CGSize(width: 600, height: 150))
+        if let countdown = l.meetingCountdownBaseline, let lastWord = l.statusBaselines.last {
+            XCTAssertGreaterThan(countdown, lastWord + 7)
+        }
+    }
+
+    func testMeetingTitleBaselineOberhalsClock() {
+        let l = meetingState(size: CGSize(width: 600, height: 150))
+        if let title = l.meetingTitleBaseline {
+            XCTAssertLessThan(title, l.clockBaseline)
+        }
+    }
 }
