@@ -4,12 +4,7 @@ import Network
 
 final class HTTPServerTests: XCTestCase {
     func testClosesStalledConnectionAfterTimeout() throws {
-        let port = UInt16.random(in: 50_000...59_000)
-        let server = HTTPServer(port: port, readTimeout: 0.5) { req in .json(200, ["path": req.path]) }
-        let ready = expectation(description: "bereit")
-        server.onStateChange = { if $0 == .ready { ready.fulfill() } }
-        try server.start()
-        wait(for: [ready], timeout: 3)
+        let (server, port) = try startServer(readTimeout: 0.5) { req in .json(200, ["path": req.path]) }
         defer { server.stop() }
 
         let queue = DispatchQueue(label: "test-stalled-connection")
@@ -41,12 +36,7 @@ final class HTTPServerTests: XCTestCase {
     /// gleichzeitig zu (darf nicht crashen) und prüft danach, dass nach dem Löschen kein
     /// veralteter `.stopped`-Callback mehr ankommt.
     func testOnStateChangeIsThreadSafeAndSuppressedAfterClearing() throws {
-        let port = UInt16.random(in: 50_000...59_000)
-        let server = HTTPServer(port: port) { req in .json(200, ["path": req.path]) }
-        let ready = expectation(description: "bereit")
-        server.onStateChange = { if $0 == .ready { ready.fulfill() } }
-        try server.start()
-        wait(for: [ready], timeout: 3)
+        let (server, _) = try startServer { req in .json(200, ["path": req.path]) }
 
         // Gleichzeitiges Lesen und Schreiben aus zwei Threads darf nicht crashen.
         let iterations = 500
@@ -73,12 +63,7 @@ final class HTTPServerTests: XCTestCase {
     }
 
     func testServesOnLoopback() throws {
-        let port = UInt16.random(in: 50_000...59_000)
-        let server = HTTPServer(port: port) { req in .json(200, ["path": req.path]) }
-        let ready = expectation(description: "bereit")
-        server.onStateChange = { if $0 == .ready { ready.fulfill() } }
-        try server.start()
-        wait(for: [ready], timeout: 3)
+        let (server, port) = try startServer { req in .json(200, ["path": req.path]) }
         defer { server.stop() }
 
         let done = expectation(description: "Antwort")

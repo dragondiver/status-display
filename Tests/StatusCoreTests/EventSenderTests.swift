@@ -3,14 +3,9 @@ import XCTest
 
 final class EventSenderTests: XCTestCase {
     func testSendsToRunningServer() throws {
-        let port = UInt16.random(in: 50_000...59_000)
         var received: [AgentEvent] = []
         let router = IngressRouter(token: "t", knownPresets: Locked([]), onEvent: { received.append($0) }, onStatus: { _, _ in })
-        let server = HTTPServer(port: port, handler: router.handle)
-        let ready = expectation(description: "bereit")
-        server.onStateChange = { if $0 == .ready { ready.fulfill() } }
-        try server.start()
-        wait(for: [ready], timeout: 3)
+        let (server, port) = try startServer(handler: router.handle)
         defer { server.stop() }
 
         let event = AgentEvent(source: "claude-code", session: "s", state: "running")
