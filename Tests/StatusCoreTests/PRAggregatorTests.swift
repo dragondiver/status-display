@@ -118,6 +118,21 @@ final class PRAggregatorTests: XCTestCase {
         XCTAssertEqual(a.zone(now: t0, hosts: ["github.com"]).rows.map(\.repository), ["rundfunk"])
     }
 
+    /// status-display#31: Eigene PRs mit roter CI in ausgeblendeten Repos zählen nicht in der
+    /// Board-Zahl (das Dashboard blendet sie ebenfalls aus); sichtbare Repos zählen weiter.
+    func testCIFailingInHiddenRepoDoesNotCountButVisibleRepoDoes() {
+        var a = PRAggregator()
+        a.record(PRSnapshot(host: "github.com", toReview: [],
+                            mine: [pr(1, repository: "f/rundfunk", failing: true),
+                                   pr(2, repository: "f/telefon-ai", failing: true)], fetchedAt: t0))
+        let hiddenExplicit = a.zone(now: t0, hosts: ["github.com"], hidden: ["github.com/f/rundfunk"])
+        XCTAssertEqual(hiddenExplicit.ciFailingCount, 1)
+        XCTAssertEqual(hiddenExplicit.rows.map(\.repository), ["telefon-ai"])
+        let hiddenByDefault = a.zone(now: t0, hosts: ["github.com"], hostDefaults: ["github.com": .hidden])
+        XCTAssertEqual(hiddenByDefault.ciFailingCount, 0)
+        XCTAssertEqual(a.zone(now: t0, hosts: ["github.com"]).ciFailingCount, 2)
+    }
+
     func testHiddenRepoNeverAppearsEvenIfPinnedOrActive() {
         var a = PRAggregator()
         a.record(PRSnapshot(host: "github.com", toReview: [pr(1, repository: "f/rundfunk")], mine: [], fetchedAt: t0))

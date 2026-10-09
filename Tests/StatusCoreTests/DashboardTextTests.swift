@@ -79,4 +79,21 @@ final class DashboardTextTests: XCTestCase {
         XCTAssertEqual(CheckSummary(total: 3, passed: 2, failed: 1).other, 0)
         XCTAssertEqual(CheckSummary(total: 1, passed: 2, failed: 1).other, 0)
     }
+
+    /// status-display#31: Draft mit roter CI zeigt kein rotes X (wie das Etikett), Nicht-Draft schon.
+    func testCISymbolHidesRedForDraftsOnly() {
+        func make(draft: Bool, failing: Bool, checks: CheckSummary?) -> PullRequest {
+            PullRequest(number: 1, title: "t", repository: "acme/api", url: URL(string: "https://x/1")!,
+                        ciFailing: failing, isDraft: draft, checks: checks)
+        }
+        let red = CheckSummary(total: 3, passed: 2, failed: 1)
+        XCTAssertEqual(DashboardText.ciSymbol(make(draft: false, failing: true, checks: red)), .failed)
+        XCTAssertEqual(DashboardText.ciSymbol(make(draft: false, failing: true, checks: nil)), .failed)
+        XCTAssertEqual(DashboardText.ciSymbol(make(draft: true, failing: true, checks: red)), .none)
+        XCTAssertEqual(DashboardText.ciSymbol(make(draft: true, failing: true, checks: nil)), .none)
+        let green = CheckSummary(total: 3, passed: 3, failed: 0)
+        XCTAssertEqual(DashboardText.ciSymbol(make(draft: false, failing: false, checks: green)), .passed)
+        XCTAssertEqual(DashboardText.ciSymbol(make(draft: true, failing: false, checks: green)), .passed)
+        XCTAssertEqual(DashboardText.ciSymbol(make(draft: false, failing: false, checks: nil)), .none)
+    }
 }
