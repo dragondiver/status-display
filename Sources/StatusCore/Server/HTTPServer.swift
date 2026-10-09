@@ -20,12 +20,17 @@ public final class HTTPServer {
     }
     private let onStateChangeBox = Locked<((State) -> Void)?>(nil)
     private let port: UInt16
+    private let boundPortBox = Locked<UInt16?>(nil)
     private let readTimeout: TimeInterval
     private let maxConnections: Int
     private let handler: (HTTPRequest) -> HTTPResponse
     private let queue = DispatchQueue(label: "status-display.http")
     private var listener: NWListener?
     private var openConnections = 0
+
+    /// Tatsächlich gebundener Port, sobald der Server `.ready` ist. Bei `port: 0` vergibt das System
+    /// einen freien Port (für Tests ohne Kollisionsrisiko); davor `nil`.
+    public var boundPort: UInt16? { boundPortBox.value }
 
     public init(port: UInt16, readTimeout: TimeInterval = 10, maxConnections: Int = 32,
                 handler: @escaping (HTTPRequest) -> HTTPResponse) {
@@ -42,7 +47,9 @@ public final class HTTPServer {
         let l = try NWListener(using: params)
         l.stateUpdateHandler = { [weak self] state in
             switch state {
-            case .ready: self?.onStateChange?(.ready)
+            case .ready:
+                self?.boundPortBox.value = l.port?.rawValue
+                self?.onStateChange?(.ready)
             case .failed(let error): self?.onStateChange?(.failed("Port \(self?.port ?? 0): \(error)"))
             default: break
             }
@@ -55,6 +62,7 @@ public final class HTTPServer {
     public func stop() {
         listener?.cancel()
         listener = nil
+        boundPortBox.value = nil
         onStateChange?(.stopped)
     }
 
