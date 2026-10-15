@@ -2,6 +2,19 @@
 
 Datum: 2026-10-14
 
+> **Stand nach Umsetzung und Review (15.10.2026, status-display#51).** Der Text unten ist der
+> ursprüngliche Entwurf. Gebaut wurde davon abweichend:
+> - **Mehrere Server** (`AppSettings.jiraServers: [JiraServer]`) statt der Einzelfelder
+>   `jiraDomain`/`jiraEmail`/`jiraToken`; eine Migration gibt es nicht, weil die Einzelfelder nie
+>   auf `main` waren.
+> - **Kein Zähler auf Panel und Board-Fenster** – Tickets gehören nicht in die PR-Zone. Jira
+>   erscheint nur im Dashboard.
+> - `JiraIssue.id` ist `domain/jiraId`, damit zwei Server sich nicht in die Quere kommen.
+> - Fehler (HTTP, Netz, ungültige Domain) stehen als „domain: Fehler“ in der Seitenleiste; ein
+>   Fehler behält die zuletzt geladenen Tickets.
+> - Sortierung als `ORDER BY updated DESC` im JQL, ohne `orderBy`-Parameter.
+> - Die Tests stubben HTTP über `StubProtocol` (wie `PRServiceTests`).
+
 ## Ziel
 
 Jira Cloud (atlassian.net) in status-display einbinden: zugewiesene, offene Issues im Dashboard-Fenster anzeigen (gruppiert nach Projekt und Sprint), Gesamt-Zähler auf Panel und Board-Fenster.

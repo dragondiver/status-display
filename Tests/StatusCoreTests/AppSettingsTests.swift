@@ -202,15 +202,4 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(decoded.jiraServers, [])
         XCTAssertFalse(decoded.jiraConfigured)
     }
-
-    func testJiraMigrationFromSingleFields() throws {
-        let json = """
-        {"hosts":["github.com"],"brightness":60,"port":47615,"ghPath":"",
-         "jiraDomain":"old.atlassian.net","jiraEmail":"x@y.de","jiraToken":"tok"}
-        """
-        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
-        XCTAssertEqual(decoded.jiraServers.count, 1)
-        XCTAssertEqual(decoded.jiraServers[0].domain, "old.atlassian.net")
-        XCTAssertTrue(decoded.jiraConfigured)
-    }
 }

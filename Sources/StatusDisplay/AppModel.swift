@@ -248,6 +248,8 @@ final class AppModel: ObservableObject {
                     }
                 }
             }
+            // Wer während des Abrufs einen Server entfernt hat, bekommt dessen Tickets nicht zurück.
+            jira.retain(domains: Set(settings.jiraServers.map(\.domain)))
             scheduleRender()
         } while jiraRefreshPending
     }
@@ -465,10 +467,7 @@ final class AppModel: ObservableObject {
             Task { await refreshPRs() }
         }
         if old.jiraServers != settings.jiraServers {
-            let current = Set(settings.jiraServers.map(\.domain))
-            for domain in old.jiraServers.map(\.domain) where !current.contains(domain) {
-                jira.remove(domain: domain)
-            }
+            jira.retain(domains: Set(settings.jiraServers.map(\.domain)))
             scheduleRender()
             Task { await refreshJira() }
         }

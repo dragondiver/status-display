@@ -34,8 +34,16 @@ public struct JiraAggregator: Equatable {
         }
     }
 
-    public mutating func remove(domain: String) {
-        snapshots.removeValue(forKey: domain)
+    /// Behält nur die Snapshots der übergebenen (konfigurierten) Server. Auch ein Abruf, der beim
+    /// Entfernen eines Servers noch lief, trägt dessen Tickets danach nicht dauerhaft wieder ein.
+    public mutating func retain(domains: Set<String>) {
+        snapshots = snapshots.filter { domains.contains($0.key) }
+    }
+
+    /// Fehler aller Server als „domain: Fehler“, nach Domain sortiert – eindeutig auch dann,
+    /// wenn zwei Server denselben Fehler melden.
+    public var errorLines: [String] {
+        snapshots.compactMap { domain, snapshot in snapshot.error.map { "\(domain): \($0)" } }.sorted()
     }
 
     /// Issues aller Server nach Projekt (alphabetisch) und Sprint (benannte zuerst, nil zuletzt) gruppiert.

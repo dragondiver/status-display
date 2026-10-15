@@ -70,21 +70,7 @@ public struct AppSettings: Codable, Equatable {
             ?? AppSettings().boardWindowMode
         boardWindowAlwaysOnTop = try c.decodeIfPresent(Bool.self, forKey: .boardWindowAlwaysOnTop)
             ?? AppSettings().boardWindowAlwaysOnTop
-        if let servers = try c.decodeIfPresent([JiraServer].self, forKey: .jiraServers) {
-            jiraServers = servers
-        } else {
-            // Migration: einzelne Felder aus früherer Version in JiraServer umwandeln.
-            struct LegacyKey: CodingKey {
-                var stringValue: String; init(stringValue s: String) { stringValue = s }
-                var intValue: Int? { nil }; init?(intValue: Int) { nil }
-            }
-            let legacy = try decoder.container(keyedBy: LegacyKey.self)
-            let d = (try? legacy.decodeIfPresent(String.self, forKey: LegacyKey(stringValue: "jiraDomain"))) ?? ""
-            let e = (try? legacy.decodeIfPresent(String.self, forKey: LegacyKey(stringValue: "jiraEmail")))  ?? ""
-            let t = (try? legacy.decodeIfPresent(String.self, forKey: LegacyKey(stringValue: "jiraToken")))  ?? ""
-            jiraServers = (!d.isEmpty && !e.isEmpty && !t.isEmpty)
-                ? [JiraServer(domain: d, email: e, token: t)] : []
-        }
+        jiraServers = try c.decodeIfPresent([JiraServer].self, forKey: .jiraServers) ?? []
     }
 
     private static let key = "settings"

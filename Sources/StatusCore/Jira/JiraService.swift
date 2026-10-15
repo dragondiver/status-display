@@ -17,17 +17,17 @@ public final class JiraService: JiraFetcher {
 
     public func fetch(domain: String, email: String, token: String) async throws -> JiraSnapshot {
         let domain = Self.normalizedDomain(domain)
-        let jql = "assignee=currentUser() AND statusCategory!=Done"
+        // Sortierung gehört ins JQL: /rest/api/3/search/jql kennt keinen orderBy-Parameter.
+        let jql = "assignee=currentUser() AND statusCategory!=Done ORDER BY updated DESC"
         let fields = "summary,status,priority,project,customfield_10020"
         guard var components = URLComponents(string: "https://\(domain)/rest/api/3/search/jql") else {
-            return JiraSnapshot(issues: [], fetchedAt: Date(),
-                                error: "Ungültige Domain: \(domain)")
+            // Die Domain steht schon vor der Fehlerzeile (JiraAggregator.errorLines).
+            return JiraSnapshot(issues: [], fetchedAt: Date(), error: "Ungültige Domain")
         }
         components.queryItems = [
             URLQueryItem(name: "jql", value: jql),
             URLQueryItem(name: "fields", value: fields),
             URLQueryItem(name: "maxResults", value: "100"),
-            URLQueryItem(name: "orderBy", value: "updated DESC"),
         ]
         var request = URLRequest(url: components.url!, timeoutInterval: 20)
         request.setValue("application/json", forHTTPHeaderField: "Accept")

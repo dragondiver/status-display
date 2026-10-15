@@ -208,7 +208,7 @@ private struct DashboardSidebar: View {
                 }
             }
             let jiraGroups = jira.grouped()
-            let jiraErrors = jira.snapshots.values.compactMap(\.error)
+            let jiraErrors = jira.errorLines
             if jiraConfigured, !jiraGroups.isEmpty || !jiraErrors.isEmpty {
                 Section("Jira") {
                     ForEach(jiraGroups, id: \.project) { group in

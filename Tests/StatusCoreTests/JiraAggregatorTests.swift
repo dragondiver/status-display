@@ -111,14 +111,29 @@ final class JiraAggregatorTests: XCTestCase {
         XCTAssertEqual(agg.snapshots["a.atlassian.net"]?.error, "Netzwerkfehler")
     }
 
-    func testRemoveLöschteSnapshotEinesServers() {
+    func testRetainBehältNurKonfigurierteServer() {
         var agg = JiraAggregator(snapshots: [
             "a.atlassian.net": snap([issue("A-1")]),
             "b.atlassian.net": snap([issue("B-1")]),
         ])
-        agg.remove(domain: "a.atlassian.net")
+        agg.retain(domains: ["b.atlassian.net"])
         XCTAssertEqual(agg.openCount, 1)
         XCTAssertNil(agg.snapshots["a.atlassian.net"])
+    }
+
+    func testRetainOhneServerLeertAlles() {
+        var agg = JiraAggregator(snapshots: ["a.atlassian.net": snap([issue("A-1")])])
+        agg.retain(domains: [])
+        XCTAssertTrue(agg.snapshots.isEmpty)
+    }
+
+    // MARK: Fehlerzeilen
+
+    func testErrorLinesNennenDomainUndSindEindeutig() {
+        var agg = JiraAggregator(snapshots: ["c.atlassian.net": snap([issue("C-1")])])
+        agg.recordError("HTTP 401", for: "b.atlassian.net")
+        agg.recordError("HTTP 401", for: "a.atlassian.net")
+        XCTAssertEqual(agg.errorLines, ["a.atlassian.net: HTTP 401", "b.atlassian.net: HTTP 401"])
     }
 
     // MARK: ID-Eindeutigkeit

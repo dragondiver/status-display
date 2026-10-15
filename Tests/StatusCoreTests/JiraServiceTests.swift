@@ -84,7 +84,7 @@ final class JiraServiceTests: XCTestCase {
     func testFetchReturnsErrorSnapshotForInvalidDomain() async throws {
         // Leerzeichen in der Domain → URLComponents gibt nil → kein Absturz
         let snap = try await JiraService().fetch(domain: "my domain .net", email: "a@b.de", token: "t")
-        XCTAssertNotNil(snap.error, "Ungültige Domain muss Fehler-Snapshot liefern, nicht abstürzen")
+        XCTAssertEqual(snap.error, "Ungültige Domain", "Ungültige Domain muss Fehler-Snapshot liefern, nicht abstürzen")
         XCTAssertTrue(snap.issues.isEmpty)
     }
 
@@ -95,14 +95,40 @@ final class JiraServiceTests: XCTestCase {
         XCTAssertEqual(JiraService.normalizedDomain("FOO.ATLASSIAN.NET/"),          "foo.atlassian.net")
     }
 
-    func testSnapshotErrorWhenHTTPFails() async throws {
-        struct FailingFetcher: JiraFetcher {
-            func fetch(domain: String, email: String, token: String) async throws -> JiraSnapshot {
-                JiraSnapshot(issues: [], fetchedAt: Date(), error: "HTTP 401")
-            }
+    // MARK: fetch gegen gestubbtes HTTP (StubProtocol aus PRServiceTests)
+
+    private func session() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StubProtocol.self]
+        return URLSession(configuration: config)
+    }
+
+    func testFetchSchicktJQLMitSortierungUndBasicAuth() async throws {
+        var seen: URLRequest?
+        StubProtocol.handler = { req in
+            seen = req
+            return (200, Data(#"{"issues":[]}"#.utf8))
         }
-        let snap = try await FailingFetcher().fetch(domain: "x.atlassian.net", email: "a", token: "b")
+        let snap = try await JiraService(session: session())
+            .fetch(domain: "https://x.atlassian.net/", email: "a@b.de", token: "tok")
+        XCTAssertNil(snap.error)
+        let url = try XCTUnwrap(seen?.url)
+        XCTAssertEqual(url.host, "x.atlassian.net")
+        XCTAssertEqual(url.path, "/rest/api/3/search/jql")
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        // Sortierung gehört ins JQL; /search/jql kennt keinen orderBy-Parameter.
+        XCTAssertEqual(items.first { $0.name == "jql" }?.value,
+                       "assignee=currentUser() AND statusCategory!=Done ORDER BY updated DESC")
+        XCTAssertNil(items.first { $0.name == "orderBy" })
+        XCTAssertEqual(seen?.value(forHTTPHeaderField: "Authorization"),
+                       "Basic " + Data("a@b.de:tok".utf8).base64EncodedString())
+    }
+
+    func testFetchHTTP401LiefertFehlerSnapshot() async throws {
+        StubProtocol.handler = { _ in (401, Data()) }
+        let snap = try await JiraService(session: session())
+            .fetch(domain: "x.atlassian.net", email: "a@b.de", token: "falsch")
+        XCTAssertEqual(snap.error, "HTTP 401")
         XCTAssertEqual(snap.issues, [])
-        XCTAssertNotNil(snap.error)
     }
 }

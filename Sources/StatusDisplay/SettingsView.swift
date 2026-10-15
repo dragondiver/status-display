@@ -380,10 +380,13 @@ struct SettingsView: View {
                 SecureField("API-Token", text: $newJiraToken)
                 Button("Hinzufügen") {
                     let domain = JiraService.normalizedDomain(newJiraDomain)
-                    guard !domain.isEmpty, !newJiraEmail.isEmpty, !newJiraToken.isEmpty else { return }
+                    // Eingefügte Token bringen oft einen Zeilenumbruch mit – das gäbe ein stilles HTTP 401.
+                    let email = newJiraEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let token = newJiraToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !domain.isEmpty, !email.isEmpty, !token.isEmpty else { return }
                     guard !model.settings.jiraServers.contains(where: { $0.domain == domain }) else { return }
                     model.settings.jiraServers.append(
-                        JiraServer(domain: domain, email: newJiraEmail, token: newJiraToken))
+                        JiraServer(domain: domain, email: email, token: token))
                     newJiraDomain = ""; newJiraEmail = ""; newJiraToken = ""
                 }
                 .disabled(newJiraDomain.isEmpty || newJiraEmail.isEmpty || newJiraToken.isEmpty)
