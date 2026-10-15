@@ -528,6 +528,20 @@ private struct DashboardDetail: View {
                 label("Projekt")
                 Text(agent.project ?? "–")
             }
+            // Pfad, Branch und Prompt nur hier im Dashboard, nie auf Panel, Board-Fenster oder im
+            // Menü (status-display#52). Fehlt eine Angabe, entfällt ihre Zeile.
+            if let path = agent.path {
+                GridRow {
+                    label("Pfad")
+                    Text(AgentText.abbreviatingHome(path, home: NSHomeDirectory()))
+                        .textSelection(.enabled)
+                        .help(path)
+                }
+                GridRow {
+                    label("Branch")
+                    AgentBranchText(path: path)
+                }
+            }
             GridRow {
                 label("Zustand")
                 HStack(spacing: 4) {
@@ -545,12 +559,25 @@ private struct DashboardDetail: View {
                     Text(detail).textSelection(.enabled)
                 }
             }
+            if let prompt = agent.prompt {
+                GridRow {
+                    label("Letzter Prompt")
+                    Text(prompt)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
         .font(.callout)
         HStack(spacing: 8) {
             if agent.url != nil {
                 Button("Öffnen") { open(item) }
                     .keyboardShortcut(.defaultAction)
+            }
+            if let path = agent.path {
+                Button("Im Finder zeigen") {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                }
             }
             Button("Entfernen") { dismissAgent(agent.id) }
         }
@@ -561,6 +588,24 @@ private struct DashboardDetail: View {
         Text(text)
             .foregroundStyle(.secondary)
             .gridColumnAlignment(.leading)
+    }
+}
+
+/// Git-Branch im Arbeitsverzeichnis, ermittelt beim Öffnen der Detailansicht und bei einem neuen
+/// Pfad – nicht mit jeder Hook-Meldung (status-display#52). git läuft abseits des Main-Threads.
+private struct AgentBranchText: View {
+    let path: String
+    @State private var branch: GitBranch?
+
+    var body: some View {
+        Text(branch?.text ?? "…")
+            .foregroundStyle(branch == nil ? .secondary : .primary)
+            .textSelection(.enabled)
+            .task(id: path) {
+                branch = nil
+                let path = path
+                branch = await Task.detached(priority: .userInitiated) { GitBranch.read(path: path) }.value
+            }
     }
 }
 
