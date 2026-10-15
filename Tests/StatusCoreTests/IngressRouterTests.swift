@@ -33,6 +33,22 @@ final class IngressRouterTests: XCTestCase {
         XCTAssertEqual(events, [AgentEvent(source: "claude-code", session: "s1", state: "running", project: "telefon-ai")])
     }
 
+    func testEventCarriesPathAndPrompt() {
+        let r = router().handle(req("POST", "/v1/events",
+            body: #"{"source":"claude-code","session":"s1","state":"running","path":"/private/tmp/beispiel-1","prompt":"Zeile 1\nZeile 2"}"#))
+        XCTAssertEqual(r.status, 202)
+        XCTAssertEqual(events.first?.path, "/private/tmp/beispiel-1")
+        XCTAssertEqual(events.first?.prompt, "Zeile 1\nZeile 2")
+    }
+
+    func testRelativePathIs400() {
+        let r = router().handle(req("POST", "/v1/events",
+            body: #"{"source":"a","session":"b","state":"running","path":"beispiel"}"#))
+        XCTAssertEqual(r.status, 400)
+        XCTAssertTrue(String(decoding: r.body, as: UTF8.self).contains("absoluter Pfad"))
+        XCTAssertTrue(events.isEmpty)
+    }
+
     func testBrokenJSONAndInvalidStateAre400() {
         XCTAssertEqual(router().handle(req("POST", "/v1/events", body: "{kaputt")).status, 400)
         let r = router().handle(req("POST", "/v1/events", body: #"{"source":"a","session":"b","state":"busy"}"#))

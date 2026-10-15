@@ -8,7 +8,7 @@ public final class MCPHandler {
     Melde deinen Arbeitszustand mit report_status: state=running, wenn du mit einer Aufgabe \
     beginnst; waiting, wenn du auf eine Antwort oder Freigabe des Menschen wartest; done, wenn \
     die Aufgabe fertig ist; error bei Abbruch; ended, wenn die Sitzung endet. name ist ein \
-    kurzer Projektname.
+    kurzer Projektname, path (optional) der absolute Pfad deines Arbeitsverzeichnisses.
     """
 
     static let toolDefinition: [String: Any] = [
@@ -23,6 +23,8 @@ public final class MCPHandler {
                 "project": ["type": "string"],
                 "detail": ["type": "string", "description": "eine Zeile, z. B. worauf du wartest"],
                 "url": ["type": "string", "description": "Link zum PR, Issue oder zur Sitzung"],
+                "path": ["type": "string",
+                         "description": "absoluter Pfad des Arbeitsverzeichnisses, z. B. /Users/name/projekt"],
             ],
             "required": ["state", "name"],
         ] as [String: Any],
@@ -83,7 +85,8 @@ public final class MCPHandler {
             let event = AgentEvent(source: "mcp:\(client)", session: session ?? name,
                                    state: args["state"] as? String ?? "",
                                    name: name.isEmpty ? nil : name, project: args["project"] as? String,
-                                   detail: args["detail"] as? String, url: args["url"] as? String)
+                                   detail: args["detail"] as? String, url: args["url"] as? String,
+                                   path: args["path"] as? String)
             do {
                 try event.validate()
                 onEvent(event)

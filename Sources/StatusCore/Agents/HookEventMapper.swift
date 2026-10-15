@@ -9,12 +9,21 @@ public enum HookEventMapper {
         guard let hook = obj["hook_event_name"] as? String, let session = obj["session_id"] as? String else {
             return nil
         }
-        let project = (obj["cwd"] as? String).map { URL(fileURLWithPath: $0).lastPathComponent }
+        let cwd = obj["cwd"] as? String
+        let project = cwd.map { URL(fileURLWithPath: $0).lastPathComponent }
+        // Voller Pfad nur fürs Dashboard (status-display#52). Ein relativer würde das ganze
+        // Ereignis an der Prüfung in `/v1/events` scheitern lassen, also lieber weglassen.
+        let path = cwd.flatMap { $0.hasPrefix("/") ? $0 : nil }
         let state: String
         var detail: String?
+        var prompt: String?
         switch hook {
-        case "SessionStart", "UserPromptSubmit", "PostToolUse":
+        case "SessionStart", "PostToolUse":
             state = "running"
+        case "UserPromptSubmit":
+            state = "running"
+            // Schon hier kürzen: Der volle Prompt verlässt den Hook nie.
+            prompt = AgentText.promptExcerpt(obj["prompt"] as? String)
         case "Notification":
             let message = obj["message"] as? String
             let idle = obj["notification_type"] as? String == "idle_prompt"
@@ -33,6 +42,6 @@ public enum HookEventMapper {
             return nil
         }
         return AgentEvent(source: source, session: session, state: state, name: project,
-                          project: project, detail: detail)
+                          project: project, detail: detail, path: path, prompt: prompt)
     }
 }

@@ -10,8 +10,49 @@ final class HookEventMapperTests: XCTestCase {
         for hook in ["SessionStart", "UserPromptSubmit", "PostToolUse"] {
             let e = try map(#"{"hook_event_name":"\#(hook)","session_id":"abc","cwd":"/Users/f/Development/telefon-ai"}"#)
             XCTAssertEqual(e, AgentEvent(source: "claude-code", session: "abc", state: "running",
-                                         name: "telefon-ai", project: "telefon-ai"))
+                                         name: "telefon-ai", project: "telefon-ai",
+                                         path: "/Users/f/Development/telefon-ai"))
         }
+    }
+
+    // MARK: Pfad und Prompt (status-display#52)
+
+    func testKeepsFullCwdAsPathAndLastComponentAsProject() throws {
+        for hook in ["SessionStart", "PostToolUse", "Stop", "PermissionRequest"] {
+            let e = try map(#"{"hook_event_name":"\#(hook)","session_id":"s","cwd":"/private/tmp/beispiel-1"}"#)
+            XCTAssertEqual(e?.path, "/private/tmp/beispiel-1", hook)
+            XCTAssertEqual(e?.project, "beispiel-1", hook)
+            XCTAssertNil(e?.prompt, hook)
+        }
+    }
+
+    func testRelativeOrMissingCwdGivesNoPath() throws {
+        let relative = try map(#"{"hook_event_name":"PostToolUse","session_id":"s","cwd":"beispiel"}"#)
+        XCTAssertNil(relative?.path)
+        XCTAssertEqual(relative?.project, "beispiel")
+        XCTAssertNoThrow(try relative?.validate())
+        XCTAssertNil(try map(#"{"hook_event_name":"PostToolUse","session_id":"s"}"#)?.path)
+    }
+
+    func testUserPromptSubmitCarriesPromptWithLineBreaks() throws {
+        let e = try map(#"{"hook_event_name":"UserPromptSubmit","session_id":"s","cwd":"/Users/kollegin-a/Development/beispiel","prompt":"Bitte die Tests ergänzen.\nDanach den Build prüfen."}"#)
+        XCTAssertEqual(e?.state, "running")
+        XCTAssertEqual(e?.prompt, "Bitte die Tests ergänzen.\nDanach den Build prüfen.")
+        XCTAssertEqual(e?.path, "/Users/kollegin-a/Development/beispiel")
+    }
+
+    func testUserPromptSubmitWithoutPromptLeavesItOut() throws {
+        // Codex: ob `prompt` mitkommt, ist ungeprüft – fehlt es, bleibt das Feld leer.
+        let e = try map(#"{"hook_event_name":"UserPromptSubmit","session_id":"c","cwd":"/x/beispiel"}"#, source: "codex")
+        XCTAssertEqual(e?.state, "running")
+        XCTAssertNil(e?.prompt)
+        XCTAssertNil(try map(#"{"hook_event_name":"UserPromptSubmit","session_id":"c","cwd":"/x","prompt":"  \n "}"#)?.prompt)
+    }
+
+    func testLongPromptIsShortenedBeforeLeavingTheHook() throws {
+        let long = String(repeating: "a", count: 5_000)
+        let e = try map(#"{"hook_event_name":"UserPromptSubmit","session_id":"s","cwd":"/x","prompt":"\#(long)"}"#)
+        XCTAssertEqual(e?.prompt, String(repeating: "a", count: 300) + "…")
     }
 
     func testPermissionNotificationIsWaitingWithMessage() throws {

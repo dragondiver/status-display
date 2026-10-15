@@ -99,6 +99,55 @@ final class AgentRegistryTests: XCTestCase {
         XCTAssertTrue(registry.snapshot().isEmpty)
     }
 
+    // MARK: Pfad und Prompt (status-display#52)
+
+    private func hook(_ state: String, path: String? = nil, prompt: String? = nil) -> AgentEvent {
+        AgentEvent(source: "claude-code", session: "s1", state: state, name: "beispiel", project: "beispiel",
+                   path: path, prompt: prompt)
+    }
+
+    func testPathAndPromptSurviveLaterEventsWithoutThem() throws {
+        try registry.apply(hook("running", path: "/Users/kollegin-a/Development/beispiel",
+                                prompt: "Bitte die Tests ergänzen.\nDanach den Build prüfen."))
+        try registry.apply(hook("running", path: "/Users/kollegin-a/Development/beispiel"))   // PostToolUse
+        try registry.apply(hook("waiting"))                                                   // Notification
+        try registry.apply(hook("done"))                                                      // Stop
+        let a = registry.snapshot()[0]
+        XCTAssertEqual(a.path, "/Users/kollegin-a/Development/beispiel")
+        XCTAssertEqual(a.prompt, "Bitte die Tests ergänzen.\nDanach den Build prüfen.")
+        XCTAssertEqual(a.state, .done)
+    }
+
+    func testNewPathReplacesOldAndKeepsPrompt() throws {
+        try registry.apply(hook("running", path: "/Users/kollegin-a/Development/beispiel", prompt: "Worktree anlegen"))
+        try registry.apply(hook("running", path: "/private/tmp/beispiel-1"))
+        let a = registry.snapshot()[0]
+        XCTAssertEqual(a.path, "/private/tmp/beispiel-1")
+        XCTAssertEqual(a.prompt, "Worktree anlegen")
+    }
+
+    func testNewPromptReplacesOldAndEmptyOneDoesNot() throws {
+        try registry.apply(hook("running", prompt: "erster Auftrag"))
+        try registry.apply(hook("running", prompt: "zweiter Auftrag"))
+        XCTAssertEqual(registry.snapshot()[0].prompt, "zweiter Auftrag")
+        try registry.apply(hook("running", path: "", prompt: " \n"))
+        XCTAssertEqual(registry.snapshot()[0].prompt, "zweiter Auftrag")
+        XCTAssertNil(registry.snapshot()[0].path)
+    }
+
+    func testPromptFromEventsEndpointIsShortened() throws {
+        // Direkt an /v1/events gemeldet, also nicht schon vom Hook gekürzt.
+        try registry.apply(hook("running", prompt: String(repeating: "x", count: 1_000)))
+        XCTAssertEqual(registry.snapshot()[0].prompt, String(repeating: "x", count: 300) + "…")
+    }
+
+    func testRelativePathIsRejected() {
+        XCTAssertThrowsError(try registry.apply(hook("running", path: "Development/beispiel"))) {
+            XCTAssertEqual($0 as? AgentEventError, .relativePath("Development/beispiel"))
+        }
+        XCTAssertTrue(registry.snapshot().isEmpty)
+    }
+
     func testURLAcceptsOnlyHTTPAndHTTPS() throws {
         func url(_ u: String) throws -> URL? {
             try registry.apply(AgentEvent(source: "x", session: u, state: "running", name: nil, project: nil,

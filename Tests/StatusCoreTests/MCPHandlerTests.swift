@@ -44,6 +44,42 @@ final class MCPHandlerTests: XCTestCase {
                                            name: "mise-en-place", detail: "Frage zur Migration")])
     }
 
+    // MARK: path (status-display#52)
+
+    func testToolSchemaHasOptionalPath() {
+        let (_, obj) = call(#"{"jsonrpc":"2.0","id":10,"method":"tools/list"}"#)
+        let tool = ((obj["result"] as? [String: Any])?["tools"] as? [[String: Any]])?.first
+        let schema = tool?["inputSchema"] as? [String: Any]
+        let path = (schema?["properties"] as? [String: Any])?["path"] as? [String: Any]
+        XCTAssertEqual(path?["type"] as? String, "string")
+        XCTAssertEqual(schema?["required"] as? [String], ["state", "name"])
+    }
+
+    func testReportStatusPassesPath() {
+        let sid = initialize()
+        let (_, obj) = call(#"{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"report_status","arguments":{"state":"running","name":"beispiel","path":"/Users/kollegin-a/Development/beispiel"}}}"#, session: sid)
+        XCTAssertNil((obj["result"] as? [String: Any])?["isError"])
+        XCTAssertEqual(events, [AgentEvent(source: "mcp:copilot", session: sid, state: "running", name: "beispiel",
+                                           path: "/Users/kollegin-a/Development/beispiel")])
+        XCTAssertNil(events.first?.prompt)
+    }
+
+    func testReportStatusWithoutPathStillWorks() {
+        _ = call(#"{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"report_status","arguments":{"state":"running","name":"beispiel"}}}"#)
+        XCTAssertEqual(events.count, 1)
+        XCTAssertNil(events.first?.path)
+    }
+
+    func testRelativePathIsToolError() {
+        let (r, obj) = call(#"{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"report_status","arguments":{"state":"running","name":"beispiel","path":"~/Development/beispiel"}}}"#)
+        XCTAssertEqual(r.status, 200)
+        let result = obj["result"] as? [String: Any]
+        XCTAssertEqual(result?["isError"] as? Bool, true)
+        let text = (result?["content"] as? [[String: Any]])?.first?["text"] as? String
+        XCTAssertEqual(text, "path muss ein absoluter Pfad sein (beginnt mit /): ~/Development/beispiel")
+        XCTAssertTrue(events.isEmpty)
+    }
+
     func testInvalidStateIsToolErrorNotCrash() {
         let (r, obj) = call(#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"report_status","arguments":{"state":"busy","name":"x"}}}"#)
         XCTAssertEqual(r.status, 200)

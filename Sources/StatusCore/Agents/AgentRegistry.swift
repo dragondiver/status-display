@@ -29,6 +29,10 @@ public final class AgentRegistry {
         item.name = event.name ?? event.project ?? item.project ?? item.name
         item.detail = event.detail
         if let u = event.url { item.url = Self.webURL(u) }
+        // Pfad und Prompt bringen nicht alle Ereignisse mit (`PostToolUse`, `Stop`, …): Fehlt
+        // einer, bleibt der alte. Ein neuer Pfad (z. B. Wechsel in einen Worktree) ersetzt ihn.
+        if let path = event.path, !path.isEmpty { item.path = path }
+        item.prompt = AgentText.promptExcerpt(event.prompt) ?? item.prompt
         items[id] = item
     }
 
