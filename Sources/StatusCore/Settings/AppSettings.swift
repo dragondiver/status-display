@@ -28,12 +28,16 @@ public struct AppSettings: Codable, Equatable {
     public var boardWindowMode: BoardWindowMode = .automatic
     /// „Immer im Vordergrund“-Schalter für das Board-Fenster (status-display#23).
     public var boardWindowAlwaysOnTop = false
+    public var jiraServers: [JiraServer] = []
+
+    public var jiraConfigured: Bool { !jiraServers.isEmpty }
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case hosts, brightness, port, ghPath, pinnedRepos, hiddenRepos, shownRepos, hostDefaults,
-             boardWindowMode, boardWindowAlwaysOnTop
+             boardWindowMode, boardWindowAlwaysOnTop,
+             jiraServers
     }
 
     // Handgeschrieben statt synthetisiert: Felder, die es in gespeicherten Einstellungen noch
@@ -66,6 +70,7 @@ public struct AppSettings: Codable, Equatable {
             ?? AppSettings().boardWindowMode
         boardWindowAlwaysOnTop = try c.decodeIfPresent(Bool.self, forKey: .boardWindowAlwaysOnTop)
             ?? AppSettings().boardWindowAlwaysOnTop
+        jiraServers = try c.decodeIfPresent([JiraServer].self, forKey: .jiraServers) ?? []
     }
 
     private static let key = "settings"

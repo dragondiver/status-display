@@ -44,6 +44,10 @@ final class AppModel: ObservableObject {
     /// Läuft gerade ein PR-Abruf? Fürs Dashboard (Fortschrittsanzeige neben „Aktualisieren“).
     @Published private(set) var prsRefreshRunning = false
     private var prsRefreshPending = false
+    @Published private(set) var jira = JiraAggregator.unknown
+    @Published private(set) var jiraRefreshRunning = false
+    private var jiraRefreshPending = false
+    private let jiraService: JiraFetcher
     private var reconnectScheduled = false
     private var lastReconnect: Date?
     /// Für `EndpointOwnership`: nur eine `endpoint.json` entfernen, die diese Instanz selbst
@@ -70,8 +74,10 @@ final class AppModel: ObservableObject {
     /// Display gilt beim Start zunächst als „nicht verbunden“, bis IOKit sich meldet.
     private let startupTime = Date()
 
-    init(calendarService: MeetingProvider = CalendarService()) {
+    init(calendarService: MeetingProvider = CalendarService(),
+         jiraService: JiraFetcher = JiraService()) {
         self.calendarService = calendarService
+        self.jiraService = jiraService
         let settings = AppSettings.load()
         self.settings = settings
         display = DisplayController(brightness: settings.brightness)
@@ -100,12 +106,16 @@ final class AppModel: ObservableObject {
         timers.append(Timer.scheduledTimer(withTimeInterval: PRAggregator.refreshInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refreshPRs() }
         })
+        timers.append(Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.refreshJira() }
+        })
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil,
                                                           queue: .main) { [weak self] _ in
             Task { @MainActor in
                 self?.display.reinitialize()
                 self?.scheduleRender()
                 await self?.refreshPRs()
+                await self?.refreshJira()
             }
         }
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
@@ -115,6 +125,7 @@ final class AppModel: ObservableObject {
         }
         refreshLocal()
         Task { await refreshPRs() }
+        Task { await refreshJira() }
 
         // Kein Fenster-Controller hier (status-display#36): `AppModel` ist ein `@StateObject` und wird
         // mitten in SwiftUIs Scene-Instanziierung erzeugt; ein dabei angelegtes Fenster brachte auf
@@ -211,6 +222,36 @@ final class AppModel: ObservableObject {
         }
         stopServer()
         startServer()
+    }
+
+    func refreshJira() async {
+        guard settings.jiraConfigured else { return }
+        guard !jiraRefreshRunning else {
+            jiraRefreshPending = true
+            return
+        }
+        jiraRefreshRunning = true
+        defer { jiraRefreshRunning = false }
+        repeat {
+            jiraRefreshPending = false
+            for server in settings.jiraServers {
+                let snap = try? await jiraService.fetch(
+                    domain: server.domain,
+                    email: server.email,
+                    token: server.token
+                )
+                if let snap {
+                    if let error = snap.error {
+                        jira.recordError(error, for: server.domain)
+                    } else {
+                        jira.record(snap, for: server.domain)
+                    }
+                }
+            }
+            // Wer während des Abrufs einen Server entfernt hat, bekommt dessen Tickets nicht zurück.
+            jira.retain(domains: Set(settings.jiraServers.map(\.domain)))
+            scheduleRender()
+        } while jiraRefreshPending
     }
 
     /// Single-flight: läuft bereits ein Refresh, wird nur vorgemerkt statt eines zweiten,
@@ -424,6 +465,11 @@ final class AppModel: ObservableObject {
         if old.brightness != settings.brightness { display.setBrightness(settings.brightness) }
         if old.hosts != settings.hosts || old.ghPath != settings.ghPath {
             Task { await refreshPRs() }
+        }
+        if old.jiraServers != settings.jiraServers {
+            jira.retain(domains: Set(settings.jiraServers.map(\.domain)))
+            scheduleRender()
+            Task { await refreshJira() }
         }
         // Angeheftet/ausgeblendet/normal und der Host-Standard wirken nur auf die Zeilenbildung
         // aus bereits vorhandenen Snapshots (PRAggregator.zone) – dafür reicht ein Neu-Rendern,

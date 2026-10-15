@@ -25,6 +25,7 @@ struct SettingsView: View {
             statusTab.tabItem { Text("Status") }
             agentsTab.tabItem { Text("Agenten") }
             reposTab.tabItem { Text("Repos") }
+            jiraTab.tabItem { Text("Jira") }
         }
         .frame(width: 620, height: 520)
         .padding()
@@ -344,6 +345,56 @@ struct SettingsView: View {
             }
             Text(text).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                 .padding(6).background(Color.secondary.opacity(0.1))
+        }
+    }
+
+    // MARK: Jira
+
+    @State private var newJiraDomain = ""
+    @State private var newJiraEmail  = ""
+    @State private var newJiraToken  = ""
+
+    private var jiraTab: some View {
+        Form {
+            Section("Jira Cloud Server") {
+                if model.settings.jiraServers.isEmpty {
+                    Text("Kein Server konfiguriert.").foregroundStyle(.secondary)
+                } else {
+                    ForEach(model.settings.jiraServers) { server in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(server.domain)
+                                Text(server.email).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Entfernen") {
+                                model.settings.jiraServers.removeAll { $0.id == server.id }
+                            }
+                        }
+                    }
+                }
+            }
+            Section("Server hinzufügen") {
+                TextField("domain.atlassian.net", text: $newJiraDomain).autocorrectionDisabled()
+                TextField("vorname.nachname@firma.de", text: $newJiraEmail).autocorrectionDisabled()
+                SecureField("API-Token", text: $newJiraToken)
+                Button("Hinzufügen") {
+                    let domain = JiraService.normalizedDomain(newJiraDomain)
+                    // Eingefügte Token bringen oft einen Zeilenumbruch mit – das gäbe ein stilles HTTP 401.
+                    let email = newJiraEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let token = newJiraToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !domain.isEmpty, !email.isEmpty, !token.isEmpty else { return }
+                    guard !model.settings.jiraServers.contains(where: { $0.domain == domain }) else { return }
+                    model.settings.jiraServers.append(
+                        JiraServer(domain: domain, email: email, token: token))
+                    newJiraDomain = ""; newJiraEmail = ""; newJiraToken = ""
+                }
+                .disabled(newJiraDomain.isEmpty || newJiraEmail.isEmpty || newJiraToken.isEmpty)
+            }
+            Section {
+                Link("API-Token erstellen",
+                     destination: URL(string: "https://id.atlassian.com/manage-profile/security/api-tokens")!)
+            }
         }
     }
 }
