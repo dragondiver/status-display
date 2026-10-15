@@ -17,6 +17,7 @@ struct DashboardView: View {
         case repo(String)
         case hidden
         case agent(String)
+        case jiraProject(String)   // projectKey
     }
 
     @State private var sidebar: SidebarSelection? = .section(.waiting)
@@ -28,15 +29,27 @@ struct DashboardView: View {
         let dashboard = model.dashboard(now: now)
         let items = listItems(dashboard)
         NavigationSplitView {
-            DashboardSidebar(dashboard: dashboard, selection: $sidebar, now: now)
+            DashboardSidebar(dashboard: dashboard, jira: model.jira,
+                             jiraConfigured: model.settings.jiraConfigured,
+                             selection: $sidebar, now: now)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 280)
         } content: {
-            DashboardList(dashboard: dashboard, selection: sidebar, items: items, now: now,
-                          selectedItemID: $selectedItemID, open: open)
-                .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 520)
-                .safeAreaInset(edge: .bottom) { footer(dashboard) }
+            if case .jiraProject(let key)? = sidebar {
+                JiraDashboardList(jira: model.jira, projectKey: key,
+                                  selectedIssueID: $selectedItemID)
+                    .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 520)
+            } else {
+                DashboardList(dashboard: dashboard, selection: sidebar, items: items, now: now,
+                              selectedItemID: $selectedItemID, open: open)
+                    .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 520)
+                    .safeAreaInset(edge: .bottom) { footer(dashboard) }
+            }
         } detail: {
-            if let item = items.first(where: { $0.id == selectedItemID }) {
+            if case .jiraProject? = sidebar,
+               let issueID = selectedItemID,
+               let issue = model.jira.allIssues.first(where: { $0.id == issueID }) {
+                JiraDashboardDetail(issue: issue)
+            } else if let item = items.first(where: { $0.id == selectedItemID }) {
                 DashboardDetail(item: item, now: now, open: open, dismissAgent: model.dismissAgent)
             } else {
                 Text("Nichts ausgewählt")
@@ -56,6 +69,17 @@ struct DashboardView: View {
                 }
                 .help("PRs aktualisieren (⌘R)")
                 .keyboardShortcut("r", modifiers: .command)
+                if model.settings.jiraConfigured {
+                    if model.jiraRefreshRunning {
+                        ProgressView().controlSize(.small)
+                    }
+                    Button {
+                        Task { await model.refreshJira() }
+                    } label: {
+                        Label("Jira aktualisieren", systemImage: "arrow.clockwise.circle")
+                    }
+                    .help("Jira-Tickets aktualisieren")
+                }
                 Menu {
                     StatusMenuItems(model: model)
                 } label: {
@@ -80,6 +104,7 @@ struct DashboardView: View {
         case .repo(let key)?: return dashboard.items(inRepo: key)
         case .hidden?: return dashboard.hiddenReviews
         case .agent(let id)?: return dashboard.agentItem(id: id).map { [$0] } ?? []
+        case .jiraProject?: return []   // Jira-Inhalt direkt in content-Spalte gerendert
         case nil: return []
         }
     }
@@ -134,6 +159,8 @@ struct DashboardView: View {
 
 private struct DashboardSidebar: View {
     let dashboard: Dashboard
+    let jira: JiraAggregator
+    let jiraConfigured: Bool
     @Binding var selection: DashboardView.SidebarSelection?
     let now: Date
 
@@ -177,6 +204,23 @@ private struct DashboardSidebar: View {
                     ForEach(dashboard.agents) { item in
                         AgentSidebarRow(item: item, now: now)
                             .tag(DashboardView.SidebarSelection.agent(item.id))
+                    }
+                }
+            }
+            let jiraGroups = jira.grouped()
+            let jiraErrors = jira.snapshots.values.compactMap(\.error)
+            if jiraConfigured, !jiraGroups.isEmpty || !jiraErrors.isEmpty {
+                Section("Jira") {
+                    ForEach(jiraGroups, id: \.project) { group in
+                        SidebarRow(title: group.projectName,
+                                   count: group.sprints.flatMap(\.issues).count,
+                                   waiting: false)
+                            .tag(DashboardView.SidebarSelection.jiraProject(group.project))
+                    }
+                    ForEach(jiraErrors, id: \.self) { error in
+                        Label(error, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.red)
+                            .font(.caption)
                     }
                 }
             }
@@ -517,6 +561,131 @@ private struct DashboardDetail: View {
         Text(text)
             .foregroundStyle(.secondary)
             .gridColumnAlignment(.leading)
+    }
+}
+
+// MARK: - Jira
+
+private struct JiraDashboardList: View {
+    let jira: JiraAggregator
+    let projectKey: String
+    @Binding var selectedIssueID: String?
+
+    var body: some View {
+        let group = jira.grouped().first { $0.project == projectKey }
+        let errors = jira.snapshots.values.compactMap(\.error)
+        if let error = errors.first, group == nil {
+            Text("Fehler: \(error)")
+                .foregroundStyle(.secondary)
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let group {
+            List(selection: $selectedIssueID) {
+                ForEach(group.sprints, id: \.sprint) { sprintGroup in
+                    Section(sprintGroup.sprint ?? "Kein Sprint") {
+                        ForEach(sprintGroup.issues) { issue in
+                            JiraIssueRow(issue: issue).tag(issue.id)
+                        }
+                    }
+                }
+            }
+        } else {
+            Text("Keine Tickets.")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+private struct JiraIssueRow: View {
+    let issue: JiraIssue
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Circle()
+                .fill(priorityColor(issue.priorityName))
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(issue.summary)
+                    .lineLimit(1)
+                Text("\(issue.key) · \(issue.statusName)")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct JiraDashboardDetail: View {
+    let issue: JiraIssue
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(issue.projectName) · \(issue.key)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Text(issue.summary)
+                        .font(.title3.weight(.semibold))
+                        .textSelection(.enabled)
+                }
+                HStack(spacing: 6) {
+                    JiraStatusBadge(name: issue.statusName)
+                    if let p = issue.priorityName {
+                        JiraStatusBadge(name: p, color: priorityColor(p))
+                    }
+                }
+                if issue.sprintName != nil {
+                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
+                        if let sprint = issue.sprintName {
+                            GridRow {
+                                jiraLabel("Sprint")
+                                Text(sprint)
+                            }
+                        }
+                    }
+                    .font(.callout)
+                }
+                Button("In Jira öffnen") { NSWorkspace.shared.open(issue.url) }
+                    .keyboardShortcut(.defaultAction)
+                    .padding(.top, 4)
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func jiraLabel(_ text: String) -> some View {
+        Text(text)
+            .foregroundStyle(.secondary)
+            .gridColumnAlignment(.leading)
+    }
+}
+
+private struct JiraStatusBadge: View {
+    let name: String
+    var color: Color = .secondary
+
+    var body: some View {
+        Text(name)
+            .font(.caption)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
+            .foregroundStyle(color == .secondary ? .secondary : color)
+    }
+}
+
+private func priorityColor(_ priority: String?) -> Color {
+    switch priority?.lowercased() {
+    case "blocker", "critical": return .red
+    case "high":                return .orange
+    case "medium":              return .accentColor
+    default:                    return Color.secondary.opacity(0.5)
     }
 }
 

@@ -169,4 +169,48 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(decoded.boardWindowMode, .automatic)
         XCTAssertEqual(decoded.boardWindowAlwaysOnTop, false)
     }
+
+    // MARK: Jira-Felder (multi-server)
+
+    func testJiraServersDefaultToEmpty() {
+        XCTAssertEqual(AppSettings().jiraServers, [])
+        XCTAssertFalse(AppSettings().jiraConfigured)
+    }
+
+    func testJiraConfiguredWhenServerPresent() {
+        var s = AppSettings()
+        s.jiraServers = [JiraServer(domain: "x.atlassian.net", email: "a@b.com", token: "tok")]
+        XCTAssertTrue(s.jiraConfigured)
+    }
+
+    func testJiraServersRoundTrip() {
+        let d = UserDefaults(suiteName: "AppSettingsTests-Jira-\(UUID().uuidString)")!
+        var s = AppSettings()
+        s.jiraServers = [
+            JiraServer(domain: "a.atlassian.net", email: "a@firma.de", token: "tok1"),
+            JiraServer(domain: "b.atlassian.net", email: "b@firma.de", token: "tok2"),
+        ]
+        s.save(to: d)
+        XCTAssertEqual(AppSettings.load(from: d).jiraServers, s.jiraServers)
+    }
+
+    func testJiraServersDecodeFromOldSettingsWithoutJira() throws {
+        let json = """
+        {"hosts":["github.com"],"brightness":60,"port":47615,"ghPath":""}
+        """
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.jiraServers, [])
+        XCTAssertFalse(decoded.jiraConfigured)
+    }
+
+    func testJiraMigrationFromSingleFields() throws {
+        let json = """
+        {"hosts":["github.com"],"brightness":60,"port":47615,"ghPath":"",
+         "jiraDomain":"old.atlassian.net","jiraEmail":"x@y.de","jiraToken":"tok"}
+        """
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.jiraServers.count, 1)
+        XCTAssertEqual(decoded.jiraServers[0].domain, "old.atlassian.net")
+        XCTAssertTrue(decoded.jiraConfigured)
+    }
 }
