@@ -125,7 +125,6 @@ public struct PRSnapshot: Equatable {
     public let fetchedAt: Date
     /// Teilantwort: GitHub lieferte Daten und zusätzlich Fehler (erste Meldung).
     public let warning: String?
-    public var ciFailingCount: Int { mine.filter { $0.ciFailing && !$0.isDraft }.count }
 
     public init(host: String, toReview: [PullRequest], mine: [PullRequest], fetchedAt: Date, warning: String? = nil) {
         self.host = host; self.toReview = toReview; self.mine = mine; self.fetchedAt = fetchedAt

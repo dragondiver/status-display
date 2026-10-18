@@ -65,6 +65,28 @@ final class DashboardTextTests: XCTestCase {
         XCTAssertEqual(DashboardText.checks(pr()), "keine Angaben")
     }
 
+    /// status-display#49: Bei Drafts erscheint nirgends Rot – die Einzelzählung heißt dort
+    /// „fehlgeschlagen“ statt „rot“, ebenso der Gesamtzustand ohne Einzelzählung.
+    func testChecksDraftSaysFailedInsteadOfRed() {
+        func make(draft: Bool, failing: Bool, checks: CheckSummary?) -> PullRequest {
+            PullRequest(number: 1, title: "t", repository: "acme/api", url: URL(string: "https://x/1")!,
+                        ciFailing: failing, isDraft: draft, checks: checks)
+        }
+        let mixed = CheckSummary(total: 7, passed: 5, failed: 2)
+        let open = CheckSummary(total: 8, passed: 5, failed: 2)
+        // Draft mit Einzelzählung
+        XCTAssertEqual(DashboardText.checks(make(draft: true, failing: true, checks: mixed)),
+                       "2 fehlgeschlagen · 5 grün")
+        XCTAssertEqual(DashboardText.checks(make(draft: true, failing: true, checks: open)),
+                       "2 fehlgeschlagen · 5 grün · 1 offen")
+        // Draft ohne Einzelzählung
+        XCTAssertEqual(DashboardText.checks(make(draft: true, failing: true, checks: nil)), "fehlgeschlagen")
+        XCTAssertEqual(DashboardText.checks(make(draft: true, failing: false, checks: nil)), "keine Angaben")
+        // Nicht-Draft unverändert
+        XCTAssertEqual(DashboardText.checks(make(draft: false, failing: true, checks: mixed)), "2 rot · 5 grün")
+        XCTAssertEqual(DashboardText.checks(make(draft: false, failing: true, checks: nil)), "rot")
+    }
+
     func testSizeAndMerge() {
         XCTAssertEqual(DashboardText.size(pr(additions: 7, deletions: 7, files: 5)), "5 Dateien · +7 −7")
         XCTAssertEqual(DashboardText.size(pr(files: 1)), "1 Datei")

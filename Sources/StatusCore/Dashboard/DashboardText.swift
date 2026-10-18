@@ -59,13 +59,16 @@ public enum DashboardText {
     }
 
     /// „CI“: „8 von 8 grün“, „2 rot · 5 grün · 1 offen“, „keine Checks“, oder nur der Gesamtzustand,
-    /// wenn die Einzelzählung fehlt.
+    /// wenn die Einzelzählung fehlt. Bei Drafts erscheint nirgends Rot (Entscheidung Florian,
+    /// 18.10.2026, status-display#49): dort heißt es „fehlgeschlagen“ statt „rot“, also z. B.
+    /// „2 fehlgeschlagen · 5 grün“ bzw. ohne Einzelzählung nur „fehlgeschlagen“.
     public static func checks(_ pr: PullRequest) -> String {
-        guard let c = pr.checks else { return pr.ciFailing ? "rot" : "keine Angaben" }
+        let failedWord = pr.isDraft ? "fehlgeschlagen" : "rot"
+        guard let c = pr.checks else { return pr.ciFailing ? failedWord : "keine Angaben" }
         if c.total == 0 { return "keine Checks" }
         if c.failed == 0 && c.other == 0 { return "\(c.passed) von \(c.total) grün" }
         var parts: [String] = []
-        if c.failed > 0 { parts.append("\(c.failed) rot") }
+        if c.failed > 0 { parts.append("\(c.failed) \(failedWord)") }
         if c.passed > 0 { parts.append("\(c.passed) grün") }
         if c.other > 0 { parts.append("\(c.other) offen") }
         return parts.joined(separator: " · ")
