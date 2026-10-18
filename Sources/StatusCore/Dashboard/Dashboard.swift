@@ -163,7 +163,7 @@ public struct DashboardRepo: Identifiable, Equatable {
 /// Regeln (Entscheidung Florian, 28.09.2026, status-display#24 und status-display#39):
 /// - **Wartet auf dich**: Extra-Anfragen an mich (`needsMyReview && hasExtraRequestForMe`),
 ///   Agenten im Zustand *wartet*, eigene PRs mit roter CI (nur Nicht-Draft, wie
-///   `PRSnapshot.ciFailingCount`) oder `reviewDecision == CHANGES_REQUESTED` (auch als Draft –
+///   `PRZone.ciFailingCount`) oder `reviewDecision == CHANGES_REQUESTED` (auch als Draft –
 ///   angeforderte Änderungen gelten unabhängig vom Draft-Status).
 /// - **Code-Owner-Reviews**: `needsMyReview` ohne Extra-Anfrage (die stehen schon oben).
 /// - **Deine PRs**: alle eigenen offenen PRs, auch die schon unter „Wartet auf dich“.

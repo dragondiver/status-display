@@ -4,6 +4,14 @@ import XCTest
 final class GitHubAPITests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_790_000_000)
 
+    /// Zahl der roten eigenen PRs, wie sie Board und Dashboard aus einem geparsten Snapshot
+    /// bekommen (`PRAggregator.zone`) – Drafts zählen nicht (status-display#31, #49).
+    private func boardCIFailingCount(_ s: PRSnapshot) -> Int {
+        var a = PRAggregator()
+        a.record(s)
+        return a.zone(now: now, hosts: [s.host]).ciFailingCount
+    }
+
     func testURLs() {
         XCTAssertEqual(GitHubAPI.graphqlURL(host: "github.com").absoluteString, "https://api.github.com/graphql")
         XCTAssertEqual(GitHubAPI.graphqlURL(host: "ghe.firma.de").absoluteString, "https://ghe.firma.de/api/graphql")
@@ -26,7 +34,7 @@ final class GitHubAPITests: XCTestCase {
         let s = try GitHubAPI.parse(Data(json.utf8), host: "github.com", at: now)
         XCTAssertEqual(s.toReview.map(\.number), [12])
         XCTAssertEqual(s.mine.map(\.number), [3, 4, 5])
-        XCTAssertEqual(s.ciFailingCount, 1)
+        XCTAssertEqual(boardCIFailingCount(s), 1)
         XCTAssertEqual(s.toReview[0].repository, "a/b")
         XCTAssertEqual(s.fetchedAt, now)
         XCTAssertFalse(s.mine[0].isDraft)
@@ -47,7 +55,7 @@ final class GitHubAPITests: XCTestCase {
         XCTAssertFalse(s.mine[1].isDraft)
         XCTAssertTrue(s.mine[0].ciFailing)
         XCTAssertTrue(s.mine[1].ciFailing)
-        XCTAssertEqual(s.ciFailingCount, 1)
+        XCTAssertEqual(boardCIFailingCount(s), 1)
     }
 
     func testGraphQLErrorWithoutData() {

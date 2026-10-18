@@ -78,11 +78,12 @@ struct MenuContent: View {
         }
     }
 
-    /// Zeilenbeschriftung für einen PR im Menü: roter Punkt bei roter CI, „Extra · “ bei einer
+    /// Zeilenbeschriftung für einen PR im Menü: roter Punkt bei roter CI (nie bei Drafts,
+    /// status-display#49), „Extra · “ bei einer
     /// ausdrücklichen Zusatzanfrage an mich (Entscheidung Florian, 28.09.2026, status-display#21),
     /// „Draft · “ bei einem Entwurf, dann `#Nummer Titel`.
     private func prLabel(_ pr: PullRequest) -> String {
-        (pr.ciFailing ? "● " : "") + (pr.hasExtraRequestForMe ? "Extra · " : "")
+        (pr.ciFailing && !pr.isDraft ? "● " : "") + (pr.hasExtraRequestForMe ? "Extra · " : "")
             + (pr.isDraft ? "Draft · " : "") + "#\(pr.number) \(pr.title)"
     }
 
@@ -108,7 +109,7 @@ struct MenuContent: View {
     private func hiddenReviewsMenu(_ reviews: [PullRequest]) -> some View {
         Menu("Ausgeblendet · \(reviews.count) zu reviewen") {
             ForEach(reviews) { pr in
-                Button((pr.ciFailing ? "● " : "") + (pr.hasExtraRequestForMe ? "Extra · " : "")
+                Button((pr.ciFailing && !pr.isDraft ? "● " : "") + (pr.hasExtraRequestForMe ? "Extra · " : "")
                        + "\(pr.repository) #\(pr.number) \(pr.title)") {
                     NSWorkspace.shared.open(pr.url)
                 }
