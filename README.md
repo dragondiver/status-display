@@ -3,6 +3,10 @@
 Menüleisten-App für macOS, die auf dem AJAZZ AKP02 (9,2″, 1920×462) den
 eigenen Arbeitsstatus, laufende Agenten und PRs zeigt.
 
+> **English:** macOS menu bar app that shows your work status, running coding agents
+> (Claude Code, Codex, MCP clients) and pull requests on an AJAZZ AKP02 display, or in a
+> window if you don't have one. UI and documentation are in German. MIT licensed.
+
 Spec: `docs/superpowers/specs/2026-09-27-status-display-mac-app-design.md`
 
 ## Bauen
@@ -64,7 +68,6 @@ die Einstellungen im Reiter „Agenten“.
 
 ## Lizenz
 
-`Sources/StatusCore/Display/AKP02Protocol.swift` ist aus
-[deonspengler/akp02](https://github.com/deonspengler/akp02) portiert und
-steht unter MPL-2.0 (siehe Dateikopf). Die ESP32-Firmware liegt in
-`legacy-esp32/`.
+MIT, siehe `LICENSE`. Ausgenommen ist `Sources/StatusCore/Display/AKP02Protocol.swift`:
+aus [deonspengler/akp02](https://github.com/deonspengler/akp02) portiert und unter
+MPL-2.0 (siehe Dateikopf). Die ESP32-Firmware liegt in `legacy-esp32/`.
