@@ -125,6 +125,15 @@ Der Feind ist stille Drift, nicht der laute Fehler: Nie stillschweigend
 verwerfen — ein unbekannter Fall bekommt einen Rückfallwert, keinen
 `filter()`. Kein Fehlerpfad endet still; Fehlschläge werden laut.
 
+## Modelle: `MODELLE.md`
+
+Jedes Repo mit KI-Aufrufen führt im Wurzelverzeichnis eine `MODELLE.md`:
+Stelle, Zweck, Modell im Code, Wert auf dem Gerät (mit Prüfdatum), Thinking
+bzw. reasoning.effort. Wer ein Modell, einen Default oder das Thinking ändert,
+ändert die Datei **im selben PR**. Wer einen Gerätewert in 1Password umstellt,
+trägt ihn mit Datum nach. Die monatliche Routine „Monatscheck KI-Modelle“
+liest die Datei und meldet jede Abweichung zum Code.
+
 ## CI ohne Secrets
 
 Die Test-Pipelines brauchen **kein einziges Repository-Secret**, damit
