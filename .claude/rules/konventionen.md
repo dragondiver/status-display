@@ -1,5 +1,5 @@
 <!--
-  Gemeinsame Regeln für alle sechs Repos (telefon-ai, heim-agent, mise-en-place,
+  Gemeinsame Regeln für alle sechs Repos (ki-telefon, heim-agent, mise-en-place,
   rundfunk, sprachkurs, status-display). NICHT HIER BEARBEITEN, wenn du diese Datei in einem
   Repo unter .claude/rules/ liest: Die Quelle liegt auf Florians Mac unter
   ~/Development/claude-konventionen/konventionen.md und wird per sync.sh in
@@ -8,7 +8,7 @@
 
 # Konventionen für Florians Repos
 
-Diese Regeln gelten in allen sechs Repos: `telefon-ai`, `heim-agent`,
+Diese Regeln gelten in allen sechs Repos: `ki-telefon`, `heim-agent`,
 `mise-en-place`, `rundfunk`, `sprachkurs`, `status-display` (Owner `dragondiver`). Die
 `CLAUDE.md` bzw. `AGENTS.md` des jeweiligen Repos geht bei Widerspruch vor.
 
@@ -140,19 +140,19 @@ Die Test-Pipelines brauchen **kein einziges Repository-Secret**, damit
 Dependabot-PRs (die keine Secrets bekommen) voll geprüft werden. Externe
 Dienste werden gemockt (`monkeypatch.setenv`, `vi.mock`, `page.route()`).
 Ein Test mit echtem API-Key kommt hinter einen Marker, der per `addopts`
-ausgeschlossen ist (wie `live` und `pi` in telefon-ai). DB-Tests bekommen
+ausgeschlossen ist (wie `live` und `pi` in ki-telefon). DB-Tests bekommen
 einen ephemeren `postgres:16`-Service-Container.
 
 Wiederkehrende Stolpersteine: Werte, die lokal still aus `.env` kommen und in
 CI fehlen; Tests, die an der Zeitzone hängen (lokal Europe/Berlin, CI UTC).
 
-## Schnittstelle telefon-ai ↔ mise-en-place
+## Schnittstelle ki-telefon ↔ mise-en-place
 
-telefon-ai ruft im Gespräch `POST /api/agent/shopping/items` und
+ki-telefon ruft im Gespräch `POST /api/agent/shopping/items` und
 `POST /api/agent/recipes` in mise-en-place auf. Es gibt keinen gemeinsamen Typ
 und keinen Vertragstest. Wer `createRecipeSchema`
 (`mise-en-place/src/lib/validators.ts`) oder eine `/api/agent/*`-Route
-anfasst, prüft `telefon-ai/src/kitelefon/agents/recipes.py` mit — und
+anfasst, prüft `ki-telefon/src/kitelefon/agents/recipes.py` mit — und
 umgekehrt. Solche Änderungen sind nie `Autonomous`: als Frage berichten.
 
 ## Maßstab
